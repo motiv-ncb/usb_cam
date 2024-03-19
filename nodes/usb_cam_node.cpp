@@ -36,10 +36,12 @@
 
 #include <ros/ros.h>
 #include <usb_cam/usb_cam.h>
+#include <usb_cam/lidar_sync.h>
 #include <image_transport/image_transport.h>
 #include <camera_info_manager/camera_info_manager.h>
 #include <sstream>
 #include <std_srvs/Empty.h>
+#include <memory>
 
 namespace usb_cam {
 
@@ -51,14 +53,17 @@ public:
 
   // shared image message
   sensor_msgs::Image img_;
-  image_transport::CameraPublisher image_pub_;
+  sensor_msgs::CompressedImage compressed_img_;
 
+  image_transport::CameraPublisher image_pub_;
+  ros::Publisher compressed_image_pub_;
   // parameters
   std::string video_device_name_, io_method_name_, pixel_format_name_, camera_name_, camera_info_url_, color_format_name_ ;
-  //std::string start_service_name_, start_service_name_;
+  //std::string start_service_name_, stastarrrt_service_name_;
   bool streaming_status_;
   int image_width_, image_height_, framerate_, exposure_, brightness_, contrast_, saturation_, sharpness_, focus_,
       white_balance_, gain_;
+  bool only_compressed_;
   bool autofocus_, autoexposure_, auto_white_balance_;
   boost::shared_ptr<camera_info_manager::CameraInfoManager> cinfo_;
 
@@ -66,6 +71,9 @@ public:
 
   ros::ServiceServer service_start_, service_stop_;
 
+  std::string lidar_topic_;
+
+  std::shared_ptr<usb_cam::LidarSync> lidar_sync_;
 
 
   bool service_start_cap(std_srvs::Empty::Request  &req, std_srvs::Empty::Response &res )
@@ -86,7 +94,7 @@ public:
   {
     // advertise the main image topic
     image_transport::ImageTransport it(node_);
-    image_pub_ = it.advertiseCamera("image_raw", 1);
+    image_pub_ = it.advertiseCamera("image_raw", 30);
 
     // grab the parameters
     node_.param("video_device", video_device_name_, std::string("/dev/video0"));
@@ -119,6 +127,22 @@ public:
     node_.param("camera_name", camera_name_, std::string("head_camera"));
     node_.param("camera_info_url", camera_info_url_, std::string(""));
     cinfo_.reset(new camera_info_manager::CameraInfoManager(node_, camera_name_, camera_info_url_));
+
+    node_.param("only_compressed", only_compressed_, false);
+    cam_.set_only_compressed(only_compressed_);
+
+    node_.param("lidar_topic", lidar_topic_, std::string(""));
+    if (!lidar_topic_.empty()) {
+      ROS_INFO("Synchronizing with lidar topic: %s\n", lidar_topic_.c_str());
+      lidar_sync_ = std::make_shared<usb_cam::LidarSync>(lidar_topic_);
+      lidar_sync_->CaptureData(10);
+      cam_.set_lidar_sync(lidar_sync_);
+    }
+
+    if (only_compressed_) {
+      compressed_image_pub_ = node_.advertise<sensor_msgs::CompressedImage>("image_raw/compressed", 1);
+      compressed_img_.header.frame_id = std::string("head_camera");
+    }
 
     // create Services
     service_start_ = node_.advertiseService("start_capture", &UsbCamNode::service_start_cap, this);
@@ -199,11 +223,11 @@ public:
     // check auto white balance
     if (auto_white_balance_)
     {
-      cam_.set_v4l_parameter("white_balance_temperature_auto", 1);
+      cam_.set_v4l_parameter("white_balance_automatic", 1);
     }
     else
     {
-      cam_.set_v4l_parameter("white_balance_temperature_auto", 0);
+      cam_.set_v4l_parameter("white_balance_automatic", 0);
       cam_.set_v4l_parameter("white_balance_temperature", white_balance_);
     }
 
@@ -211,9 +235,9 @@ public:
     if (!autoexposure_)
     {
       // turn down exposure control (from max of 3)
-      cam_.set_v4l_parameter("exposure_auto", 1);
+      cam_.set_v4l_parameter("auto_exposure", 3);
       // change the exposure level
-      cam_.set_v4l_parameter("exposure_absolute", exposure_);
+      cam_.set_v4l_parameter("exposure_time_absolute", exposure_);
     }
 
     // check auto focus
@@ -239,16 +263,24 @@ public:
 
   bool take_and_send_image()
   {
-    // grab the image
-    cam_.grab_image(&img_);
+    if (only_compressed_) {
+        // grab the image
+        cam_.grab_image_compressed(&compressed_img_);
 
-    // grab the camera info
-    sensor_msgs::CameraInfoPtr ci(new sensor_msgs::CameraInfo(cinfo_->getCameraInfo()));
-    ci->header.frame_id = img_.header.frame_id;
-    ci->header.stamp = img_.header.stamp;
+        // publish the image
+        compressed_image_pub_.publish(compressed_img_);
+    } else {
+      // grab the image
+      cam_.grab_image(&img_);
 
-    // publish the image
-    image_pub_.publish(img_, *ci);
+      // grab the camera info
+      sensor_msgs::CameraInfoPtr ci(new sensor_msgs::CameraInfo(cinfo_->getCameraInfo()));
+      ci->header.frame_id = img_.header.frame_id;
+      ci->header.stamp = img_.header.stamp;
+
+      // publish the image
+      image_pub_.publish(img_, *ci);
+    }
 
     return true;
   }
@@ -262,24 +294,19 @@ public:
         if (!take_and_send_image()) ROS_WARN("USB camera did not respond in time.");
       }
       ros::spinOnce();
-      loop_rate.sleep();
+      loop_rate.sleep();  
 
     }
     return true;
   }
 
-
-
-
-
-
-};
+}; // class UsbCamNode
 
 }
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "usb_cam");
+  ros::init(argc, argv, "usb_cam"); 
   usb_cam::UsbCamNode a;
   a.spin();
   return EXIT_SUCCESS;

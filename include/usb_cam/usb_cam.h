@@ -55,8 +55,13 @@ extern "C"
 
 #include <string>
 #include <sstream>
+#include <ctime>
+#include <memory>
 
 #include <sensor_msgs/Image.h>
+#include <sensor_msgs/CompressedImage.h>
+
+#include "usb_cam/lidar_sync.h"
 
 namespace usb_cam {
 
@@ -78,6 +83,7 @@ class UsbCam {
   } color_format;
 
   UsbCam();
+
   ~UsbCam();
 
   // start camera
@@ -88,6 +94,9 @@ class UsbCam {
 
   // grabs a new image from the camera
   void grab_image(sensor_msgs::Image* image);
+
+  // grabs a new compressed image from the camera
+  void grab_image_compressed(sensor_msgs::CompressedImage* image);
 
   // enables/disable auto focus
   void set_auto_focus(int value);
@@ -104,15 +113,25 @@ class UsbCam {
   void start_capturing(void);
   bool is_capturing();
 
+  void set_lidar_sync(std::shared_ptr<LidarSync> lidar_sync) {
+    lidar_sync_ = lidar_sync;
+  }
+
+  void set_only_compressed(bool value) {
+    only_compressed_ = value;
+  }
+
  private:
   typedef struct
   {
     int width;
     int height;
     int bytes_per_pixel;
-    int image_size;
+    size_t image_size;
     char *image;
     int is_new;
+    bool is_compressed;
+    struct timespec stamp;
   } camera_image_t;
 
   struct buffer
@@ -138,7 +157,7 @@ class UsbCam {
   void open_device(void);
   void grab_image();
   bool is_capturing_;
-
+  bool only_compressed_;
 
   std::string camera_dev_;
   unsigned int pixelformat_;
@@ -157,7 +176,9 @@ class UsbCam {
   int avframe_rgb_size_;
   struct SwsContext *video_sws_;
   camera_image_t *image_;
-
+  time_t epoch_time_shift_us_;
+  std::shared_ptr<LidarSync> lidar_sync_;
+  
 };
 
 }

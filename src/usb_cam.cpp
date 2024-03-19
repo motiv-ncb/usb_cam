@@ -59,6 +59,38 @@
 
 namespace usb_cam {
 
+
+time_t get_epoch_time_shift_us()
+{
+    struct timeval epoch_time;
+    struct timespec monotonic_time;
+
+    gettimeofday(&epoch_time, NULL);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &monotonic_time);
+
+    const int64_t uptime_ms =
+            monotonic_time.tv_sec * 1000 + static_cast<int64_t>(
+                std::round(monotonic_time.tv_nsec / 1000000.0));
+    const int64_t epoch_ms =
+            epoch_time.tv_sec * 1000 + static_cast<int64_t>(
+                std::round(epoch_time.tv_usec / 1000.0));
+  
+    return static_cast<time_t>((epoch_ms - uptime_ms) / 1000);
+}
+
+timespec calc_img_timestamp(const timeval & buffer_time, const time_t & epoch_time_shift_us)
+{
+  timespec img_timestamp;
+
+  int64_t buffer_time_us = (buffer_time.tv_sec * 1000000) + buffer_time.tv_usec;
+  buffer_time_us += epoch_time_shift_us;
+
+  img_timestamp.tv_sec = (buffer_time_us / 1000000);
+  img_timestamp.tv_nsec = (buffer_time_us % 1000000) * 1000;
+
+  return img_timestamp;
+}
+
 static void errno_exit(const char * s)
 {
   ROS_ERROR("%s error %d, %s", s, errno, strerror(errno));
@@ -378,8 +410,10 @@ std::string fcc2s(unsigned int val)
 
 UsbCam::UsbCam()
   : io_(IO_METHOD_MMAP), fd_(-1), buffers_(NULL), n_buffers_(0), avframe_camera_(NULL),
+    only_compressed_(false),
     avframe_rgb_(NULL), avcodec_(NULL), avoptions_(NULL), avcodec_context_(NULL),
-    avframe_camera_size_(0), avframe_rgb_size_(0), video_sws_(NULL), image_(NULL), is_capturing_(false) {
+    avframe_camera_size_(0), avframe_rgb_size_(0), video_sws_(NULL), image_(NULL), is_capturing_(false), epoch_time_shift_us_(get_epoch_time_shift_us()) {
+      
 }
 UsbCam::~UsbCam()
 {
@@ -586,8 +620,18 @@ void UsbCam::process_image(const void * src, int len, camera_image_t *dest)
   }
   else if (pixelformat_ == V4L2_PIX_FMT_UYVY)
     uyvy2rgb((char*)src, dest->image, dest->width * dest->height);
-  else if (pixelformat_ == V4L2_PIX_FMT_MJPEG)
-    mjpeg2rgb((char*)src, len, dest->image, dest->width * dest->height);
+  else if (pixelformat_ == V4L2_PIX_FMT_MJPEG) {
+    if (only_compressed_) {
+      // dest->image = (char*)src;
+      free(dest->image);
+      dest->image = (char *)calloc(len, sizeof(char));
+      memcpy(dest->image, (char*)src, len);
+      dest->image_size = len;
+    }
+    else {
+      mjpeg2rgb((char*)src, len, dest->image, dest->width * dest->height);
+    }
+  }
   else if (pixelformat_ == V4L2_PIX_FMT_H264) // libav handles the decoding, so reusing the same function is fine
     mjpeg2rgb((char*)src, len, dest->image, dest->width * dest->height);
   else if (pixelformat_ == V4L2_PIX_FMT_RGB24)
@@ -653,9 +697,12 @@ int UsbCam::read_frame()
             errno_exit("VIDIOC_DQBUF");
         }
       }
+      image_->stamp = calc_img_timestamp(buf.timestamp, epoch_time_shift_us_);
+      timespec_get(&image_->stamp, TIME_UTC);
 
       assert(buf.index < n_buffers_);
       len = buf.bytesused;
+      
       process_image(buffers_[buf.index].start, len, image_);
 
       if (-1 == xioctl(fd_, VIDIOC_QBUF, &buf))
@@ -685,6 +732,7 @@ int UsbCam::read_frame()
             errno_exit("VIDIOC_DQBUF");
         }
       }
+
 
       for (i = 0; i < n_buffers_; ++i)
         if (buf.m.userptr == (unsigned long)buffers_[i].start && buf.length == buffers_[i].length)
@@ -739,6 +787,11 @@ void UsbCam::start_capturing(void)
   unsigned int i;
   enum v4l2_buf_type type;
 
+  if (lidar_sync_) {
+    double sleepTime = lidar_sync_->getSleepTime(ros::Time::now().toSec());
+    ros::Duration(sleepTime).sleep();
+  }
+  
   switch (io_)
   {
     case IO_METHOD_READ:
@@ -1237,7 +1290,9 @@ void UsbCam::grab_image(sensor_msgs::Image* msg)
   // grab the image
   grab_image();
   // stamp the image
-  msg->header.stamp = ros::Time::now();
+  // msg->header.stamp = ros::Time::now();
+  msg->header.stamp.sec = image_->stamp.tv_sec;
+  msg->header.stamp.nsec = image_->stamp.tv_nsec;
   // fill the info
   if (monochrome_)
   {
@@ -1254,6 +1309,15 @@ void UsbCam::grab_image(sensor_msgs::Image* msg)
     fillImage(*msg, "rgb8", image_->height, image_->width, 3 * image_->width,
         image_->image);
   }
+}
+
+void UsbCam::grab_image_compressed(sensor_msgs::CompressedImage* msg)
+{ 
+  grab_image(); 
+  msg->header.stamp.sec = image_->stamp.tv_sec;
+  msg->header.stamp.nsec = image_->stamp.tv_nsec;
+  msg->format = "jpeg";
+  msg->data.assign(image_->image, image_->image + image_->image_size);
 }
 
 void UsbCam::grab_image()
@@ -1418,4 +1482,4 @@ UsbCam::color_format UsbCam::color_format_from_string(const std::string& str)
       return COLOR_FORMAT_UNKNOWN;
 }
 
-}
+} //namespace usb_cam
