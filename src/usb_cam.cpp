@@ -66,16 +66,15 @@ time_t get_epoch_time_shift_us()
     struct timespec monotonic_time;
 
     gettimeofday(&epoch_time, NULL);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &monotonic_time);
-
-    const int64_t uptime_ms =
-            monotonic_time.tv_sec * 1000 + static_cast<int64_t>(
-                std::round(monotonic_time.tv_nsec / 1000000.0));
-    const int64_t epoch_ms =
-            epoch_time.tv_sec * 1000 + static_cast<int64_t>(
-                std::round(epoch_time.tv_usec / 1000.0));
+    clock_gettime(CLOCK_MONOTONIC, &monotonic_time);
+    
+    const int64_t uptime_us =
+            monotonic_time.tv_sec * 1000000 + static_cast<int64_t>(
+                std::round(monotonic_time.tv_nsec / 1000.0));
+    const int64_t epoch_us =
+            epoch_time.tv_sec * 1000000 + static_cast<int64_t>(epoch_time.tv_usec);
   
-    return static_cast<time_t>((epoch_ms - uptime_ms) / 1000);
+    return static_cast<time_t>(epoch_us - uptime_us);
 }
 
 timespec calc_img_timestamp(const timeval & buffer_time, const time_t & epoch_time_shift_us)
@@ -413,7 +412,7 @@ UsbCam::UsbCam()
     only_compressed_(false),
     avframe_rgb_(NULL), avcodec_(NULL), avoptions_(NULL), avcodec_context_(NULL),
     avframe_camera_size_(0), avframe_rgb_size_(0), video_sws_(NULL), image_(NULL), is_capturing_(false), epoch_time_shift_us_(get_epoch_time_shift_us()) {
-      
+      ROS_INFO("Epoch time shift: %ld us\n", epoch_time_shift_us_);
 }
 UsbCam::~UsbCam()
 {
@@ -650,6 +649,13 @@ int UsbCam::read_frame()
   unsigned int i;
   int len;
 
+  struct timespec current_time;
+  struct timespec monotonic_time;
+  struct timespec timeshift;
+  double timediff;
+  int64_t timediff_s;
+  int64_t timediff_ns;
+
   switch (io_)
   {
     case IO_METHOD_READ:
@@ -697,8 +703,33 @@ int UsbCam::read_frame()
             errno_exit("VIDIOC_DQBUF");
         }
       }
+
+      if (buf.flags & V4L2_BUF_FLAG_ERROR) {
+        if (-1 == xioctl(fd_, VIDIOC_QBUF, &buf))
+          errno_exit("VIDIOC_QBUF");
+        return 0;
+      }
+      
+      // clock_gettime(CLOCK_MONOTONIC, &monotonic_time);
+      // timespec_get(&current_time, TIME_UTC);
+      // timediff_s = monotonic_time.tv_sec - buf.timestamp.tv_sec;
+      // timediff_ns = monotonic_time.tv_nsec - buf.timestamp.tv_usec*1000;
+      epoch_time_shift_us_ = get_epoch_time_shift_us();
       image_->stamp = calc_img_timestamp(buf.timestamp, epoch_time_shift_us_);
-      timespec_get(&image_->stamp, TIME_UTC);
+      // timespec_get(&image_->stamp, TIME_UTC);
+      // image_->stamp.tv_sec -= timediff_s;
+      // image_->stamp.tv_nsec -= timediff_ns;
+      
+      // if (buf.sequence % 30 == 0) {
+      //   ROS_INFO("buffer_sequence: %u", buf.sequence);
+      //   ROS_INFO("timestamp source %x", buf.flags & V4L2_BUF_FLAG_TSTAMP_SRC_MASK); 
+      //   ROS_INFO("timestamp data: %x", buf.flags & V4L2_BUF_FLAG_TIMESTAMP_MASK);
+      //   ROS_INFO("timediff: %lds, %ldns", timediff_s, timediff_ns);
+      //   ROS_INFO("image stamp: %.16f seconds", image_->stamp.tv_sec + image_->stamp.tv_nsec/1e9);
+      //   ROS_INFO("currenttime stamp: %.16f seconds", current_time.tv_sec + current_time.tv_nsec/1e9);
+      //   timediff = static_cast<double>(current_time.tv_sec - image_->stamp.tv_sec) + (current_time.tv_nsec - image_->stamp.tv_nsec)/1000000000.0;
+      //   ROS_INFO("image delay: %.16f seconds", timediff);
+      // }
 
       assert(buf.index < n_buffers_);
       len = buf.bytesused;
@@ -1314,10 +1345,12 @@ void UsbCam::grab_image(sensor_msgs::Image* msg)
 void UsbCam::grab_image_compressed(sensor_msgs::CompressedImage* msg)
 { 
   grab_image(); 
-  msg->header.stamp.sec = image_->stamp.tv_sec;
-  msg->header.stamp.nsec = image_->stamp.tv_nsec;
-  msg->format = "jpeg";
-  msg->data.assign(image_->image, image_->image + image_->image_size);
+  if (image_->is_new) {
+    msg->header.stamp.sec = image_->stamp.tv_sec;
+    msg->header.stamp.nsec = image_->stamp.tv_nsec;
+    msg->format = "jpeg";
+    msg->data.assign(image_->image, image_->image + image_->image_size);
+  }
 }
 
 void UsbCam::grab_image()
@@ -1349,8 +1382,9 @@ void UsbCam::grab_image()
     exit(EXIT_FAILURE);
   }
 
-  read_frame();
-  image_->is_new = 1;
+  if (read_frame() == 1) {
+    image_->is_new = 1;
+  }
 }
 
 // enables/disables auto focus
