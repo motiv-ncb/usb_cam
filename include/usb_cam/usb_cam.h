@@ -113,6 +113,10 @@ class UsbCam {
   void start_capturing(void);
   bool is_capturing();
 
+  bool set_exposure_auto(int value);
+  bool set_exposure_absolute(int value);
+  bool set_powerline_frequency(int value);
+
   void set_lidar_sync(std::shared_ptr<LidarSync> lidar_sync) {
     lidar_sync_ = lidar_sync;
   }
@@ -155,7 +159,7 @@ class UsbCam {
   void init_device(int image_width, int image_height, int framerate);
   void close_device(void);
   void open_device(void);
-  void grab_image();
+  bool grab_image();
   bool is_capturing_;
   bool only_compressed_;
 
@@ -178,7 +182,11 @@ class UsbCam {
   camera_image_t *image_;
   time_t epoch_time_shift_us_;
   std::shared_ptr<LidarSync> lidar_sync_;
-  
+  int image_width_;
+  int image_height_; 
+  int framerate_;
+  color_format color_format_;
+  pixel_format pixel_format_;
 };
 
 }

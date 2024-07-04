@@ -43,6 +43,10 @@
 #include <std_srvs/Empty.h>
 #include <memory>
 
+// services
+#include <usb_cam/SetExposureAuto.h>
+#include <usb_cam/SetExposureAbsolute.h>
+
 namespace usb_cam {
 
 class UsbCamNode
@@ -69,7 +73,7 @@ public:
 
   UsbCam cam_;
 
-  ros::ServiceServer service_start_, service_stop_;
+  ros::ServiceServer service_start_, service_stop_, service_set_exposure_auto_, service_set_exposure_absolute_;
 
   std::string lidar_topic_;
 
@@ -87,6 +91,32 @@ public:
   {
     cam_.stop_capturing();
     return true;
+  }
+
+  bool setExposureAbsolute(SetExposureAbsolute::Request& req, SetExposureAbsolute::Response& res) {
+      if (cam_.set_exposure_absolute(req.value)) {
+        res.success = true; 
+        std::cout << "Exposure absolute was modified with new value " << req.value << std::endl;
+      } 
+      else {
+        res.success = false; 
+        std::cerr << "SetExposureAbsolute failed when trying to set this value " << req.value << std::endl;
+      }
+      
+      return true;
+  }
+
+  bool setExposureAuto(SetExposureAuto::Request& req, SetExposureAuto::Response& res) {
+      if (cam_.set_exposure_auto(req.value)) {
+        res.success = true; 
+        std::cout << "Exposure auto was modified with new value " << req.value << std::endl;
+      } 
+      else {
+        res.success = false; 
+        std::cerr << "setExposureAuto failed when trying to set this value " << req.value << std::endl;
+      }
+      
+      return true;
   }
 
   UsbCamNode() :
@@ -147,6 +177,8 @@ public:
     // create Services
     service_start_ = node_.advertiseService("start_capture", &UsbCamNode::service_start_cap, this);
     service_stop_ = node_.advertiseService("stop_capture", &UsbCamNode::service_stop_cap, this);
+    service_set_exposure_absolute_ = node_.advertiseService("SetExposureAbsolute", &UsbCamNode::setExposureAbsolute, this);
+    service_set_exposure_auto_ = node_.advertiseService("SetExposureAuto", &UsbCamNode::setExposureAuto, this);
 
     // check for default camera info
     if (!cinfo_->isCalibrated())
@@ -287,7 +319,7 @@ public:
 
   bool spin()
   {
-    ros::Rate loop_rate(this->framerate_);
+    ros::Rate loop_rate(10000);
     while (node_.ok())
     {
       if (cam_.is_capturing()) {

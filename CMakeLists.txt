@@ -1,10 +1,12 @@
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.5)
 project(usb_cam)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS cv_bridge image_transport roscpp std_msgs std_srvs sensor_msgs camera_info_manager)
+find_package(catkin REQUIRED COMPONENTS
+ rospy
+ cv_bridge message_generation image_transport roscpp std_msgs std_srvs sensor_msgs camera_info_manager)
 
 # Find OpenCV
 find_package(OpenCV REQUIRED)
@@ -15,9 +17,22 @@ pkg_check_modules(avcodec libavcodec REQUIRED)
 pkg_check_modules(avutil libavutil REQUIRED)
 pkg_check_modules(swscale libswscale REQUIRED)
 
+add_service_files(
+  FILES
+  SetExposureAuto.srv 
+  SetExposureAbsolute.srv
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
+
+
 ###################################################
 ## Declare things to be passed to other projects ##
 ###################################################
+## Generate services in the 'srv' folder
 
 ## LIBRARIES: libraries you create in this project that dependent projects also need
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
@@ -26,6 +41,7 @@ catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
 )
+
 
 ###########
 ## Build ##

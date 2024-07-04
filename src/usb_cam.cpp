@@ -816,12 +816,7 @@ void UsbCam::start_capturing(void)
   if(is_capturing_) return;
 
   unsigned int i;
-  enum v4l2_buf_type type;
-
-  if (lidar_sync_) {
-    double sleepTime = lidar_sync_->getSleepTime(ros::Time::now().toSec());
-    ros::Duration(sleepTime).sleep();
-  }
+  enum v4l2_buf_type type; 
   
   switch (io_)
   {
@@ -875,7 +870,79 @@ void UsbCam::start_capturing(void)
 
       break;
   }
+
+  // if (this->set_powerline_frequency(V4L2_CID_POWER_LINE_FREQUENCY_50HZ)) {
+  //   ROS_INFO("Powerline frequency set to 50Hz");
+  // } 
+
+  if (this->set_powerline_frequency(V4L2_CID_POWER_LINE_FREQUENCY_DISABLED)) {
+    ROS_INFO("Powerline frequency set to disabled");
+  } 
+
   is_capturing_ = true;
+}
+
+bool UsbCam::set_exposure_auto(int value) {
+  struct v4l2_control control;
+  memset(&control, 0, sizeof(control));
+  control.id = V4L2_CID_EXPOSURE_AUTO;
+
+  if (0 == ioctl(fd_, VIDIOC_G_CTRL, &control)) {
+      control.value = value;
+ 
+      if (-1 == ioctl(fd_, VIDIOC_S_CTRL, &control)
+          && errno != ERANGE) {
+          perror("set_exposure_auto(): VIDIOC_S_CTRL"); 
+          return false;
+      } 
+  } else if (errno != EINVAL) {
+      perror("set_exposure_auto(): VIDIOC_G_CTRL"); 
+      return false;
+  }
+
+  return true;
+}
+
+bool UsbCam::set_exposure_absolute(int value) {
+  struct v4l2_control control;
+  memset(&control, 0, sizeof(control));
+  control.id = V4L2_CID_EXPOSURE_ABSOLUTE;
+
+  if (0 == ioctl(fd_, VIDIOC_G_CTRL, &control)) {
+      control.value = value;
+ 
+      if (-1 == ioctl(fd_, VIDIOC_S_CTRL, &control)
+          && errno != ERANGE) {
+          perror("set_exposure_absolute(): VIDIOC_S_CTRL"); 
+          return false;
+      } 
+  } else if (errno != EINVAL) {
+      perror("set_exposure_absolute(): VIDIOC_G_CTRL"); 
+      return false;
+  }
+  
+  return true;
+}
+
+bool UsbCam::set_powerline_frequency(int value) {
+  struct v4l2_control control;
+  memset(&control, 0, sizeof(control));
+  control.id = V4L2_CID_POWER_LINE_FREQUENCY;
+
+  if (0 == ioctl(fd_, VIDIOC_G_CTRL, &control)) {
+      control.value = value;
+
+      if (-1 == ioctl(fd_, VIDIOC_S_CTRL, &control)
+          && errno != ERANGE) {
+          perror("set_powerline_frequency(): VIDIOC_S_CTRL"); 
+          return false;
+      } 
+  } else if (errno != EINVAL) {
+      perror("set_powerline_frequency(): VIDIOC_G_CTRL"); 
+      return false;
+  }
+
+  return true;
 }
 
 void UsbCam::uninit_device(void)
@@ -1231,8 +1298,13 @@ void UsbCam::start(const std::string& dev, io_method io_method,
 		   int framerate)
 {
   camera_dev_ = dev;
-
+  image_width_ = image_width;
+  image_height_ = image_height;
   io_ = io_method;
+  framerate_ = framerate;
+  color_format_ = color_format;
+  pixel_format_ = pixel_format;
+
   monochrome_ = false;
   if (pixel_format == PIXEL_FORMAT_YUYV)
     pixelformat_ = V4L2_PIX_FMT_YUYV;
@@ -1353,7 +1425,7 @@ void UsbCam::grab_image_compressed(sensor_msgs::CompressedImage* msg)
   }
 }
 
-void UsbCam::grab_image()
+bool UsbCam::grab_image()
 {
   fd_set fds;
   struct timeval tv;
@@ -1371,20 +1443,26 @@ void UsbCam::grab_image()
   if (-1 == r)
   {
     if (EINTR == errno)
-      return;
-
-    errno_exit("select");
+      return false;
+    
+    ROS_ERROR("select");
   }
 
   if (0 == r)
   {
-    ROS_ERROR("select timeout");
-    exit(EXIT_FAILURE);
+    ROS_ERROR("select timeout, trying to restart");
+    // exit(EXIT_FAILURE);
+
+    this->shutdown();
+    this->start(camera_dev_, io_, pixel_format_, color_format_, image_width_, image_height_, framerate_);
   }
 
   if (read_frame() == 1) {
     image_->is_new = 1;
+    return true;
   }
+
+  return false;
 }
 
 // enables/disables auto focus
