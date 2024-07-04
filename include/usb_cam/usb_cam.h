@@ -61,7 +61,8 @@ extern "C"
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/CompressedImage.h>
 
-#include "usb_cam/lidar_sync.h"
+#include <usb_cam/lidar_sync.h>
+#include <usb_cam/see3cam_hidraw.h>
 
 namespace usb_cam {
 

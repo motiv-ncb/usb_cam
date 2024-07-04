@@ -879,6 +879,16 @@ void UsbCam::start_capturing(void)
     ROS_INFO("Powerline frequency set to disabled");
   } 
 
+  uint32_t exposure_compensation = 33000;
+  See3CamHidraw hidraw(0x2560, 0xc1d1);
+  if (hidraw.setExposureCompensation(exposure_compensation)) {
+    ROS_INFO("Exposure compensation set to %u", exposure_compensation);
+  }
+  else {
+    ROS_ERROR("Failed to set exposure compensation");
+  }
+
+
   is_capturing_ = true;
 }
 

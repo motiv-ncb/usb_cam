@@ -9,13 +9,14 @@ find_package(catkin REQUIRED COMPONENTS
  cv_bridge message_generation image_transport roscpp std_msgs std_srvs sensor_msgs camera_info_manager)
 
 # Find OpenCV
-find_package(OpenCV REQUIRED)
+find_package(OpenCV REQUIRED) 
 
 ## pkg-config libraries
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(avcodec libavcodec REQUIRED)
 pkg_check_modules(avutil libavutil REQUIRED)
 pkg_check_modules(swscale libswscale REQUIRED)
+pkg_check_modules(udev libudev REQUIRED)
 
 add_service_files(
   FILES
@@ -47,34 +48,29 @@ catkin_package(
 ## Build ##
 ###########
 
-include_directories(include
+## Build the USB camera library
+add_library(${PROJECT_NAME} src/usb_cam.cpp src/see3cam_hidraw.cpp)
+target_link_libraries(${PROJECT_NAME} PUBLIC
+  ${avcodec_LIBRARIES}
+  ${avutil_LIBRARIES}
+  ${swscale_LIBRARIES}
+  ${catkin_LIBRARIES}
+  ${udev_LIBRARIES}
+  ${OpenCV_LIBS}
+)
+
+target_include_directories(${PROJECT_NAME} PUBLIC 
   ${catkin_INCLUDE_DIRS}
   ${avcodec_INCLUDE_DIRS}
   ${swscale_INCLUDE_DIRS}
   ${avutil_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
-)
-
-## Build the USB camera library
-add_library(${PROJECT_NAME} src/usb_cam.cpp)
-target_link_libraries(${PROJECT_NAME}
-  ${avcodec_LIBRARIES}
-  ${avutil_LIBRARIES}
-  ${swscale_LIBRARIES}
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBS}
+  include
 )
 
 ## Declare a cpp executable
 add_executable(${PROJECT_NAME}_node nodes/usb_cam_node.cpp)
-target_link_libraries(${PROJECT_NAME}_node
-  ${PROJECT_NAME}
-  ${avcodec_LIBRARIES}
-  ${avutil_LIBRARIES}
-  ${swscale_LIBRARIES}
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBS}
-)
+target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME})
 
 #############
 ## Install ##
