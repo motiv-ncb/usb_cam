@@ -888,6 +888,14 @@ void UsbCam::start_capturing(void)
     ROS_ERROR("Failed to set exposure compensation");
   }
 
+  uint8_t q_factor = 70;
+  if (hidraw.setQFactor(q_factor)) {
+    ROS_INFO("Q-factor set to %u", q_factor);
+  }
+  else {
+    ROS_ERROR("Failed to set Q-factor");
+  }
+
 
   is_capturing_ = true;
 }

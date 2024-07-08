@@ -19,6 +19,8 @@ public:
     ~See3CamHidraw() = default; 
     const char* getDevicePath();
     bool setExposureCompensation(uint32_t value);
+    bool getFrameRate(uint8_t& value);
+    bool setQFactor(uint8_t value);
     bool sendHidCommand(int fd, unsigned char* inBuf, unsigned char* outBuf, size_t len);
 protected:
     int product_id_;

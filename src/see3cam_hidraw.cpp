@@ -18,11 +18,18 @@
 #define SET_EXPOSURE_COMPENSATION_CU135  0x1A
 #define GET_EXPOSURE_COMPENSATION_CU135  0x19
 
+#define SET_FRAME_RATE_CU135             0x1C
+#define GET_FRAME_RATE_CU135             0x1B
+
+#define GET_Q_FACTOR_CU135               0x0D
+#define SET_Q_FACTOR_CU135				 0x0E
+
 #define SET_FAIL		0x00
 #define SET_SUCCESS		0x01
 
 
 namespace usb_cam {
+
 
 const char* See3CamHidraw::getDevicePath() {
     struct udev* udev = udev_new(); 
@@ -136,6 +143,93 @@ bool See3CamHidraw::setExposureCompensation(uint32_t value) {
             ret = false;
         } else if(in_buf[0] == CAMERA_CONTROL_CU135 &&
             in_buf[1]==SET_EXPOSURE_COMPENSATION_CU135 &&
+            in_buf[6]==SET_SUCCESS) { 
+            ret = true;
+        }
+    }
+    close(fd);
+
+    return ret;
+}
+
+
+bool See3CamHidraw::getFrameRate(uint8_t& framerate) {
+    if (!dev_path_) {
+        std::cerr << "HIDRAW Device not found: dev_path_" << std::endl;
+        return false;
+    }
+
+    bool ret = false;
+ 
+    uint8_t buf[64],in_buf[64];
+    memset(buf, 0x00, sizeof(buf));
+    memset(in_buf, 0x00, sizeof(in_buf));
+
+    int res;
+    int fd = open(dev_path_, O_RDWR|O_NONBLOCK);
+    if(fd < 0) {
+        std::cerr << "Error opening device: " << dev_path_ << std::endl;
+        return false;
+    }
+    
+    buf[0] = CAMERA_CONTROL_CU135;
+    buf[1] = GET_FRAME_RATE_CU135; 
+ 
+    if(sendHidCommand(fd, buf, in_buf, 64))
+    {
+        if (in_buf[6]==SET_FAIL) 
+        { 
+            ret = false;
+        } 
+        else if(
+            in_buf[0] == CAMERA_CONTROL_CU135 &&
+            in_buf[1] == GET_FRAME_RATE_CU135 &&
+            in_buf[6] == SET_SUCCESS) 
+        { 
+                
+            framerate = static_cast<uint8_t>(in_buf[2]);
+            ret = true;
+        }
+    }
+    close(fd);
+
+    return ret;
+}
+
+bool See3CamHidraw::setQFactor(uint8_t value) {
+    if (!dev_path_) {
+        std::cerr << "HIDRAW Device not found: dev_path_" << std::endl;
+        return false;
+    }
+
+    if (value < 0 || value > 100) {
+        std::cerr << "Q-factor range error" << std::endl;
+        return false;
+    }
+
+
+    bool ret = false;
+ 
+    uint8_t buf[64],in_buf[64];
+    memset(buf, 0x00, sizeof(buf));
+    memset(in_buf, 0x00, sizeof(in_buf));
+
+    int res;
+    int fd = open(dev_path_, O_RDWR|O_NONBLOCK);
+    if(fd < 0) {
+        std::cerr << "Error opening device: " << dev_path_ << std::endl;
+        return false;
+    }
+
+    buf[0] = CAMERA_CONTROL_CU135;
+    buf[1] = SET_Q_FACTOR_CU135;
+    buf[2] = value; 
+
+    if(sendHidCommand(fd, buf, in_buf, 64)){
+        if (in_buf[6]==SET_FAIL) { 
+            ret = false;
+        } else if(in_buf[0] == CAMERA_CONTROL_CU135 &&
+            in_buf[1]==SET_Q_FACTOR_CU135 &&
             in_buf[6]==SET_SUCCESS) { 
             ret = true;
         }
