@@ -35,6 +35,7 @@
   <depend>image_transport</depend>
   <depend>image_transport_plugins</depend>
   <depend>v4l-utils</depend>
+  <depend>libudev-dev</depend>
 
   <!-- Only required for MJPEG to RGB converison -->
   <depend>ffmpeg</depend>

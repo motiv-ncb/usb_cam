@@ -50,6 +50,8 @@ extern "C" {
 #include "usb_cam/conversions.hpp"
 #include "usb_cam/utils.hpp"
 
+#include "usb_cam/see3cam_hidraw.h"
+
 
 namespace usb_cam
 {
@@ -262,6 +264,24 @@ void UsbCam::start_capturing()
     case io_method_t::IO_METHOD_UNKNOWN:
       throw std::invalid_argument("IO method unknown");
   }
+
+  uint32_t exposure_compensation = 33000;
+  See3CamHidraw hidraw(0x2560, 0xc1d1);
+  if (hidraw.setExposureCompensation(exposure_compensation)) {
+    std::cout << "Exposure compensation is set to " << exposure_compensation << std::endl; 
+  }
+  else {
+    std::cerr << "Failed to set exposure compensation" << std::endl;
+  }
+
+  uint8_t q_factor = 70;
+  if (hidraw.setQFactor(q_factor)) {
+    std::cout << "Q-factor set to " << q_factor << std::endl;
+  }
+  else {
+    std::cerr << "Failed to set Q-factor" << std::endl;
+  }
+
   m_is_capturing = true;
 }
 

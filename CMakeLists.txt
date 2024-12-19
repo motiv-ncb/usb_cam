@@ -33,6 +33,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(avcodec REQUIRED libavcodec)
 pkg_check_modules(avutil REQUIRED libavutil)
 pkg_check_modules(swscale REQUIRED libswscale)
+pkg_check_modules(udev libudev REQUIRED)
 
 if(EXISTS ${avcodec})
   message(STATUS "Found libavcodec: ${avcodec}")
@@ -49,7 +50,7 @@ endif()
 ## Build the USB camera library
 ## Do not use ament_auto here so as to not link to rclcpp
 add_library(${PROJECT_NAME} SHARED
-  src/usb_cam.cpp
+  src/usb_cam.cpp src/see3cam_hidraw.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -61,6 +62,7 @@ target_link_libraries(${PROJECT_NAME}
   ${avcodec_LIBRARIES}
   ${avutil_LIBRARIES}
   ${swscale_LIBRARIES}
+  ${udev_LIBRARIES}
   ${OpenCV_LIBRARIES})
 
 # Remove once ROS 1 Noetic is deprecated
