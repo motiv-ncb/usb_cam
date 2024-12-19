@@ -130,6 +130,7 @@ typedef struct
   bool auto_white_balance;
   bool autoexposure;
   bool autofocus;
+  int power_line_frequency;
 } parameters_t;
 
 typedef struct
