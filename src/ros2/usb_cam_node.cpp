@@ -175,6 +175,7 @@ void UsbCamNode::init()
   if (m_parameters.pixel_format_name == "raw_mjpeg") { 
     m_compressed_img_msg.reset(new sensor_msgs::msg::CompressedImage());
     m_compressed_img_msg->header.frame_id = m_parameters.frame_id;
+    m_compressed_img_msg->format = "jpeg";
     m_compressed_image_publisher =
       this->create_publisher<sensor_msgs::msg::CompressedImage>(
       std::string(BASE_TOPIC_NAME) + "/compressed", rclcpp::QoS(100));
@@ -210,7 +211,8 @@ void UsbCamNode::init()
 
   // TODO(lucasw) should this check a little faster than expected frame rate?
   // TODO(lucasw) how to do small than ms, or fractional ms- std::chrono::nanoseconds?
-  const int period_ms = 1000.0 / m_parameters.framerate;
+  // const int period_ms = 1000.0 / m_parameters.framerate;
+  const int period_ms = static_cast<int>(1000.0 / m_parameters.framerate);
   m_timer = this->create_wall_timer(
     std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
     std::bind(&UsbCamNode::update, this));
@@ -390,15 +392,9 @@ bool UsbCamNode::take_and_send_image()
 }
 
 bool UsbCamNode::take_and_send_image_mjpeg()
-{
-  // Only resize if required
-  if (sizeof(m_compressed_img_msg->data) != m_camera->get_image_size_in_bytes()) {
-    m_compressed_img_msg->format = "jpeg";
-    m_compressed_img_msg->data.resize(m_camera->get_image_size_in_bytes());
-  }
-
-  // grab the image, pass image msg buffer to fill
-  m_camera->get_image(reinterpret_cast<char *>(&m_compressed_img_msg->data[0]));
+{ 
+  // grab the image, pass fill the message buffer
+  m_camera->get_image(m_compressed_img_msg->data);
 
   auto stamp = m_camera->get_image_timestamp();
   m_compressed_img_msg->header.stamp.sec = stamp.tv_sec;

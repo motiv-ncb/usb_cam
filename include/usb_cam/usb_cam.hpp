@@ -195,6 +195,10 @@ public:
   /// in an image pointer to fill in
   void get_image(char * destination);
 
+  /// @brief Overload of get_image to allow users to pass
+  /// in an std vector to fill in
+  void get_image(std::vector<unsigned char>& destination);
+
   std::vector<capture_format_t> get_supported_formats();
 
   // enables/disable auto focus

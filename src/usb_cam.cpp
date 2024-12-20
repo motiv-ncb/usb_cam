@@ -84,8 +84,8 @@ void UsbCam::process_image(const char * src, char * & dest, const int & bytes_us
   // TODO(flynneva): could we skip the copy here somehow?
   // If no conversion required, just copy the image from V4L2 buffer
   if (m_image.pixel_format->requires_conversion() == false) {
-    memcpy(dest, src, m_image.size_in_bytes);
-  } else {
+    memcpy(dest, src, bytes_used);
+  } else { 
     m_image.pixel_format->convert(src, dest, bytes_used);
   }
 }
@@ -107,6 +107,11 @@ void UsbCam::read_frame()
             throw std::runtime_error("Unable to read frame");
         }
       }
+
+      free(m_image.data);
+      m_image.size_in_bytes = len;
+      m_image.data = (char *) calloc(len, sizeof(char));
+
       return process_image(m_buffers[0].start, m_image.data, len);
     case io_method_t::IO_METHOD_MMAP:
       CLEAR(buf);
@@ -137,6 +142,9 @@ void UsbCam::read_frame()
       m_image.stamp = usb_cam::utils::calc_img_timestamp(buf.timestamp, m_epoch_time_shift_us);
 
       assert(buf.index < m_number_of_buffers);
+      free(m_image.data);
+      m_image.size_in_bytes = buf.bytesused;
+      m_image.data = (char *) calloc(buf.bytesused, sizeof(char));
       process_image(m_buffers[buf.index].start, m_image.data, buf.bytesused);
 
       /// Requeue buffer so it can be reused
@@ -171,6 +179,9 @@ void UsbCam::read_frame()
       }
 
       assert(i < m_number_of_buffers);
+      free(m_image.data);
+      m_image.size_in_bytes = buf.bytesused;
+      m_image.data = (char *) calloc(buf.bytesused, sizeof(char));
       process_image(reinterpret_cast<const char *>(buf.m.userptr), m_image.data, buf.bytesused);
       if (-1 == usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_QBUF), &buf)) {
         throw std::runtime_error("Unable to exchange buffer with driver");
@@ -265,7 +276,7 @@ void UsbCam::start_capturing()
       throw std::invalid_argument("IO method unknown");
   }
 
-  uint32_t exposure_compensation = 33000;
+  uint32_t exposure_compensation = 15000;
   See3CamHidraw hidraw(0x2560, 0xc1d1);
   if (hidraw.setExposureCompensation(exposure_compensation)) {
     std::cout << "Exposure compensation is set to " << exposure_compensation << std::endl; 
@@ -276,7 +287,7 @@ void UsbCam::start_capturing()
 
   uint8_t q_factor = 70;
   if (hidraw.setQFactor(q_factor)) {
-    std::cout << "Q-factor set to " << q_factor << std::endl;
+    std::cout << "Q-factor set to " << static_cast<int>(q_factor) << std::endl;
   }
   else {
     std::cerr << "Failed to set Q-factor" << std::endl;
@@ -584,6 +595,21 @@ void UsbCam::get_image(char * destination)
   m_image.data = destination;
   // grab the image
   grab_image();
+}
+
+/// @brief Overload get_image so users can pass in an image pointer to fill
+/// @param destination destination to fill in with image
+void UsbCam::get_image(std::vector<unsigned char>& destination)
+{
+  if ((m_image.width == 0) || (m_image.height == 0)) {
+    return;
+  }
+
+  // grab the image
+  grab_image();
+
+  destination.resize(m_image.size_in_bytes);
+  memcpy((void *)&destination[0], m_image.data, m_image.size_in_bytes);
 }
 
 std::vector<capture_format_t> UsbCam::get_supported_formats()
