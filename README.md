@@ -27,6 +27,9 @@ upstream, rebase these commits and check whether upstream fixed the same thing.
 - Image stamps are converted from the camera's monotonic time to wall-clock time for every frame,
   not once at start, so they follow a step of the system clock (e.g. by PTP or NTP) while the
   node runs. Upstream keeps the offset from start, shifting every later stamp by the step.
+- A `camera_info_url` calibration made for another image size (e.g. usb_cam's 640x480 example
+  file) is ignored with a warning, so `camera_info` reports the real image size without lens
+  values instead of wrong ones.
 - V4L2 controls are set by ID (`VIDIOC_S_CTRL`) instead of through `v4l2-ctl` names, which
   current kernels renamed. The old names made `autoexposure`, `exposure`, `auto_white_balance`,
   `white_balance`, `autofocus` and `focus` silently do nothing.

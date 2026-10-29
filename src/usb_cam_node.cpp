@@ -155,8 +155,20 @@ void UsbCamNode::init()
   m_camera_info.reset(
     new camera_info_manager::CameraInfoManager(
       this, m_parameters.camera_name, m_parameters.camera_info_url));
+  // A calibration for another image size (e.g. usb_cam's 640x480 example file) does not fit
+  // these images, so publish the real size without calibration rather than wrong values
+  const auto loaded_info = m_camera_info->getCameraInfo();
+  const bool wrong_size = m_camera_info->isCalibrated() &&
+    (loaded_info.width != static_cast<uint32_t>(m_parameters.image_width) ||
+    loaded_info.height != static_cast<uint32_t>(m_parameters.image_height));
+  if (wrong_size) {
+    RCLCPP_WARN(
+      this->get_logger(), "Ignoring the %ux%u calibration in '%s' for %dx%d images",
+      loaded_info.width, loaded_info.height, m_parameters.camera_info_url.c_str(),
+      m_parameters.image_width, m_parameters.image_height);
+  }
   // check for default camera info
-  if (!m_camera_info->isCalibrated()) {
+  if (!m_camera_info->isCalibrated() || wrong_size) {
     m_camera_info->setCameraName(m_parameters.device_name);
     m_camera_info_msg->header.frame_id = m_parameters.frame_id;
     m_camera_info_msg->width = m_parameters.image_width;
