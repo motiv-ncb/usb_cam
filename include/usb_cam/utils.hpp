@@ -38,6 +38,7 @@ extern "C" {
 #include <unistd.h>  // for access
 
 #include <cmath>
+#include <cstdint>
 #include <ctime>
 #include <cstring>
 #include <filesystem>
@@ -80,23 +81,32 @@ struct buffer
 
 
 /// @brief Get epoch time shift in microseconds
-/// @details Run this at start of process to calculate epoch time shift
+/// @details The shift changes whenever the system clock is stepped (e.g. by PTP or NTP), so
+/// get it again for every frame rather than once at start
 /// @ref https://stackoverflow.com/questions/10266451/where-does-v4l2-buffer-timestamp-value-starts-counting
 inline time_t get_epoch_time_shift_us()
 {
-  struct timeval epoch_time;
-  struct timespec monotonic_time;
+  // Read the monotonic clock just before and after the wall clock and take the middle. If the
+  // thread was interrupted in between, the two reads are far apart, so try again and keep the
+  // closest pair
+  int64_t shift_ns = 0;
+  int64_t best_gap_ns = INT64_MAX;
+  for (int attempt = 0; attempt < 3 && best_gap_ns > 2000; ++attempt) {
+    struct timespec before, epoch_time, after;
+    clock_gettime(CLOCK_MONOTONIC, &before);
+    clock_gettime(CLOCK_REALTIME, &epoch_time);
+    clock_gettime(CLOCK_MONOTONIC, &after);
 
-  gettimeofday(&epoch_time, NULL);
-  clock_gettime(CLOCK_MONOTONIC, &monotonic_time);
+    const int64_t before_ns = before.tv_sec * 1000000000LL + before.tv_nsec;
+    const int64_t after_ns = after.tv_sec * 1000000000LL + after.tv_nsec;
+    if (after_ns - before_ns < best_gap_ns) {
+      best_gap_ns = after_ns - before_ns;
+      shift_ns = epoch_time.tv_sec * 1000000000LL + epoch_time.tv_nsec -
+        (before_ns + best_gap_ns / 2);
+    }
+  }
 
-  const int64_t uptime_us =
-    monotonic_time.tv_sec * 1000000 + static_cast<int64_t>(
-    std::round(monotonic_time.tv_nsec / 1000.0));
-  const int64_t epoch_us =
-    epoch_time.tv_sec * 1000000 + epoch_time.tv_usec;
-
-  return static_cast<time_t>(epoch_us - uptime_us);
+  return static_cast<time_t>(std::llround(shift_ns / 1000.0));
 }
 
 /// @brief Calculate image timestamp from buffer time and epoch time shift.

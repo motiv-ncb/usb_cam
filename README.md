@@ -24,6 +24,9 @@ upstream, rebase these commits and check whether upstream fixed the same thing.
 - The camera runs at the supported rate closest to `framerate` instead of the first rate it lists.
   If it still runs faster, frames are skipped to publish `framerate`. If it sends fewer frames
   than its set rate (e.g. because the exposure is longer than a frame), a warning is logged.
+- Image stamps are converted from the camera's monotonic time to wall-clock time for every frame,
+  not once at start, so they follow a step of the system clock (e.g. by PTP or NTP) while the
+  node runs. Upstream keeps the offset from start, shifting every later stamp by the step.
 - V4L2 controls are set by ID (`VIDIOC_S_CTRL`) instead of through `v4l2-ctl` names, which
   current kernels renamed. The old names made `autoexposure`, `exposure`, `auto_white_balance`,
   `white_balance`, `autofocus` and `focus` silently do nothing.

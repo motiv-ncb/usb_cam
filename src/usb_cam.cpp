@@ -138,7 +138,9 @@ bool UsbCam::read_frame()
         }
       }
 
-      // Get timestamp from V4L2 image buffer
+      // Get timestamp from V4L2 image buffer, converted with the current epoch time shift so a
+      // step of the system clock after start (e.g. by PTP or NTP) moves the stamps along
+      m_epoch_time_shift_us = usb_cam::utils::get_epoch_time_shift_us();
       m_image.stamp = usb_cam::utils::calc_img_timestamp(buf.timestamp, m_epoch_time_shift_us);
       m_image.sequence = buf.sequence;
 
@@ -165,7 +167,9 @@ bool UsbCam::read_frame()
         }
       }
 
-      // Get timestamp from V4L2 image buffer
+      // Get timestamp from V4L2 image buffer, converted with the current epoch time shift so a
+      // step of the system clock after start (e.g. by PTP or NTP) moves the stamps along
+      m_epoch_time_shift_us = usb_cam::utils::get_epoch_time_shift_us();
       m_image.stamp = usb_cam::utils::calc_img_timestamp(buf.timestamp, m_epoch_time_shift_us);
       m_image.sequence = buf.sequence;
 

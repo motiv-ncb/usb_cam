@@ -513,7 +513,7 @@ private:
 
   bool m_is_capturing;
   int m_framerate;
-  const time_t m_epoch_time_shift_us;
+  time_t m_epoch_time_shift_us;
   std::vector<capture_format_t> m_supported_formats;
   /// Holds a frame for get_image(std::vector<uint8_t> &), sized for the largest frame
   std::vector<char> m_frame_buffer;
