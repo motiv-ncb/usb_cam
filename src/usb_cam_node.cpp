@@ -182,11 +182,12 @@ void UsbCamNode::init()
     RCLCPP_WARN(this->get_logger(), "Skipping V4L2 device availability check by request.");
   }
 
-  // if pixel format is equal to 'mjpeg', i.e. raw mjpeg stream, initialize compressed image message
+  // if pixel format is 'raw_mjpeg', i.e. raw mjpeg stream, initialize compressed image message
   // and publisher
-  if (m_parameters.pixel_format_name == "mjpeg") {
+  if (m_parameters.pixel_format_name == "raw_mjpeg") {
     m_compressed_img_msg.reset(new sensor_msgs::msg::CompressedImage());
     m_compressed_img_msg->header.frame_id = m_parameters.frame_id;
+    m_compressed_img_msg->format = "jpeg";
     m_compressed_image_publisher =
       this->create_publisher<sensor_msgs::msg::CompressedImage>(
       std::string(BASE_TOPIC_NAME) + "/compressed", rclcpp::QoS(100));
@@ -412,7 +413,6 @@ bool UsbCamNode::take_and_send_image_mjpeg()
 {
   // Only resize if required
   if (sizeof(m_compressed_img_msg->data) != m_camera->get_image_size_in_bytes()) {
-    m_compressed_img_msg->format = "jpeg";
     m_compressed_img_msg->data.resize(m_camera->get_image_size_in_bytes());
   }
 
@@ -448,7 +448,7 @@ void UsbCamNode::update()
     // If the camera exposure longer higher than the framerate period
     // then that caps the framerate.
     // auto t0 = now();
-    bool isSuccessful = (m_parameters.pixel_format_name == "mjpeg") ?
+    bool isSuccessful = (m_parameters.pixel_format_name == "raw_mjpeg") ?
       take_and_send_image_mjpeg() :
       take_and_send_image();
     if (!isSuccessful) {
@@ -459,7 +459,7 @@ void UsbCamNode::update()
 
 void UsbCamNode::publish()
 {
-  if (m_parameters.pixel_format_name == "mjpeg") {
+  if (m_parameters.pixel_format_name == "raw_mjpeg") {
     m_compressed_image_publisher->publish(*m_compressed_img_msg);
     m_compressed_cam_info_publisher->publish(*m_camera_info_msg);
   } else {
