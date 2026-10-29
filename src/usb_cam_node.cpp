@@ -44,9 +44,7 @@ UsbCamNode::UsbCamNode(const rclcpp::NodeOptions & node_options)
   m_camera(new usb_cam::UsbCam()),
   m_image_msg(new sensor_msgs::msg::Image()),
   m_compressed_img_msg(nullptr),
-  m_image_publisher(std::make_shared<image_transport::CameraPublisher>(
-      image_transport::create_camera_publisher(this, BASE_TOPIC_NAME,
-      rclcpp::QoS {100}.get_rmw_qos_profile()))),
+  m_image_publisher(nullptr),
   m_compressed_image_publisher(nullptr),
   m_compressed_cam_info_publisher(nullptr),
   m_parameters(),
@@ -182,8 +180,9 @@ void UsbCamNode::init()
     RCLCPP_WARN(this->get_logger(), "Skipping V4L2 device availability check by request.");
   }
 
-  // if pixel format is 'raw_mjpeg', i.e. raw mjpeg stream, initialize compressed image message
-  // and publisher
+  // A raw_mjpeg frame is already a JPEG, so publish it as it is on image_raw/compressed. Only
+  // other formats go through image_transport, whose compressed plugin would otherwise be a
+  // second publisher on image_raw/compressed
   if (m_parameters.pixel_format_name == "raw_mjpeg") {
     m_compressed_img_msg.reset(new sensor_msgs::msg::CompressedImage());
     m_compressed_img_msg->header.frame_id = m_parameters.frame_id;
@@ -194,6 +193,11 @@ void UsbCamNode::init()
     m_compressed_cam_info_publisher =
       this->create_publisher<sensor_msgs::msg::CameraInfo>(
       "camera_info", rclcpp::QoS(100));
+  } else {
+    m_image_publisher = std::make_shared<image_transport::CameraPublisher>(
+      image_transport::create_camera_publisher(
+        this, BASE_TOPIC_NAME,
+        rclcpp::QoS {100}.get_rmw_qos_profile()));
   }
 
   m_image_msg->header.frame_id = m_parameters.frame_id;
