@@ -30,6 +30,11 @@ upstream, rebase these commits and check whether upstream fixed the same thing.
 - A `camera_info_url` calibration made for another image size (e.g. usb_cam's 640x480 example
   file) is ignored with a warning, so `camera_info` reports the real image size without lens
   values instead of wrong ones.
+- If the camera fails (no frame for 5 s, unplugged) or is busy at start, the node keeps running
+  and opens it again every second, re-applying all settings. It follows the camera by its udev
+  link (`/dev/v4l/by-id/...`) in case it comes back under another device node. Upstream ends
+  the node instead, and kept every `/dev/video*` it listed open, so a camera plugged in again
+  always got a new device node.
 - V4L2 controls are set by ID (`VIDIOC_S_CTRL`) instead of through `v4l2-ctl` names, which
   current kernels renamed. The old names made `autoexposure`, `exposure`, `auto_white_balance`,
   `white_balance`, `autofocus` and `focus` silently do nothing.
