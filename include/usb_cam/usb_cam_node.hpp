@@ -93,6 +93,9 @@ public:
 
   rclcpp::TimerBase::SharedPtr m_timer;
 
+  // Earliest frame stamp (seconds) to publish when publishing fewer frames than the camera sends
+  double m_next_publish_time = 0.0;
+
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr m_service_capture;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr m_parameters_callback_handle;
 };

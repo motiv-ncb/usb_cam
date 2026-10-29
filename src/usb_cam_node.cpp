@@ -240,6 +240,11 @@ void UsbCamNode::init()
     std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
     std::bind(&UsbCamNode::update, this));
   RCLCPP_INFO_STREAM(this->get_logger(), "Timer triggering every " << period_ms << " ms");
+  if (static_cast<size_t>(m_parameters.framerate) < frame_rate) {
+    RCLCPP_INFO_STREAM(
+      this->get_logger(),
+      "Publishing " << m_parameters.framerate << " of the camera's " << frame_rate << " fps");
+  }
 }
 
 void UsbCamNode::get_params()
@@ -452,6 +457,18 @@ void UsbCamNode::update()
     // Publish each new frame exactly once, so nothing downstream sees a frame twice
     if (!isSuccessful) {
       return;
+    }
+
+    // The camera only offers fixed rates and may run faster than `framerate`, so skip frames
+    // to publish `framerate` per second on average
+    const auto frame_rate = m_camera->get_frame_rate();
+    if (static_cast<size_t>(m_parameters.framerate) < frame_rate) {
+      const auto stamp = m_camera->get_image_timestamp();
+      const double stamp_s = stamp.tv_sec + stamp.tv_nsec * 1e-9;
+      if (stamp_s + 0.5 / frame_rate < m_next_publish_time) {
+        return;
+      }
+      m_next_publish_time = std::max(m_next_publish_time, stamp_s) + 1.0 / m_parameters.framerate;
     }
 
     publish();
