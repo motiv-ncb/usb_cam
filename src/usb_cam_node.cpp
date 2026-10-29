@@ -460,6 +460,19 @@ void UsbCamNode::update()
       return;
     }
 
+    // V4L2 numbers every frame the camera sends, so a jump means frames were lost because
+    // they were not read in time
+    const uint32_t sequence = m_camera->get_image_sequence();
+    if (m_frames_read > 0 && sequence > m_last_sequence + 1) {
+      m_frames_lost += sequence - m_last_sequence - 1;
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "%zu of %zu camera frames lost so far (not read in time)", m_frames_lost,
+        m_frames_lost + m_frames_read);
+    }
+    m_last_sequence = sequence;
+    m_frames_read++;
+
     // The camera only offers fixed rates and may run faster than `framerate`, so skip frames
     // to publish `framerate` per second on average
     const auto frame_rate = m_camera->get_frame_rate();

@@ -93,6 +93,10 @@ public:
 
   rclcpp::TimerBase::SharedPtr m_timer;
 
+  // V4L2 sequence number of the last frame read, to detect frames the camera sent but were lost
+  uint32_t m_last_sequence = 0;
+  size_t m_frames_read = 0;
+  size_t m_frames_lost = 0;
   // Earliest frame stamp (seconds) to publish when publishing fewer frames than the camera sends
   double m_next_publish_time = 0.0;
 

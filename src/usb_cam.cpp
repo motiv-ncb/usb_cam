@@ -140,6 +140,7 @@ bool UsbCam::read_frame()
 
       // Get timestamp from V4L2 image buffer
       m_image.stamp = usb_cam::utils::calc_img_timestamp(buf.timestamp, m_epoch_time_shift_us);
+      m_image.sequence = buf.sequence;
 
       assert(buf.index < m_number_of_buffers);
       process_image(m_buffers[buf.index].start, m_image.data, buf.bytesused);
@@ -166,6 +167,7 @@ bool UsbCam::read_frame()
 
       // Get timestamp from V4L2 image buffer
       m_image.stamp = usb_cam::utils::calc_img_timestamp(buf.timestamp, m_epoch_time_shift_us);
+      m_image.sequence = buf.sequence;
 
       for (i = 0; i < m_number_of_buffers; ++i) {
         if (buf.m.userptr == reinterpret_cast<uint64_t>(m_buffers[i].start) && \

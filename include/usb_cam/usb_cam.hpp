@@ -166,6 +166,9 @@ typedef struct image_t
   size_t bytes_used;
   v4l2_format v4l2_fmt;
   struct timespec stamp;
+  /// V4L2 sequence number of the last frame; the driver counts every frame the camera sent, so
+  /// a gap means frames were lost
+  uint32_t sequence;
 
   size_t set_number_of_pixels()
   {
@@ -265,6 +268,11 @@ public:
   inline size_t get_image_bytes_used()
   {
     return m_image.bytes_used;
+  }
+
+  inline uint32_t get_image_sequence()
+  {
+    return m_image.sequence;
   }
 
   inline size_t get_image_size_in_pixels()
