@@ -274,10 +274,18 @@ void UsbCamNode::init()
     return;
   }
 
-  open_camera();
+  try {
+    open_camera();
+  } catch (...) {
+    // e.g. the device is still busy because the previous node has not released it yet: keep
+    // trying from update() instead of ending the node
+    lose_camera(current_exception_text());
+  }
 
-  auto frame_rate = m_camera->get_frame_rate();
-  if (static_cast<size_t>(m_parameters.framerate) > frame_rate) {
+  // until the camera is open, assume it runs at the requested rate
+  const size_t frame_rate =
+    m_camera ? m_camera->get_frame_rate() : static_cast<size_t>(m_parameters.framerate);
+  if (m_camera && static_cast<size_t>(m_parameters.framerate) > frame_rate) {
     RCLCPP_WARN_STREAM(
       this->get_logger(),
       "Desired framerate " << m_parameters.framerate << " is higher than the camera's capability " <<
