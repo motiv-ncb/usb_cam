@@ -161,6 +161,9 @@ typedef struct image_t
   size_t number_of_pixels;
   size_t bytes_per_line;
   size_t size_in_bytes;
+  /// Bytes of the last frame that hold image data. For compressed formats this is less than
+  /// size_in_bytes and differs from frame to frame
+  size_t bytes_used;
   v4l2_format v4l2_fmt;
   struct timespec stamp;
 
@@ -184,6 +187,13 @@ typedef struct image_t
   unsigned int get_format_fourcc()
   {
     return pixel_format->v4l2();
+  }
+
+  /// @brief Compressed frames (raw_mjpeg) are passed through as they are, so each one has its
+  /// own size
+  bool is_compressed()
+  {
+    return pixel_format->v4l2() == V4L2_PIX_FMT_MJPEG && !pixel_format->requires_conversion();
   }
 } image_t;
 
@@ -213,6 +223,10 @@ public:
   /// @brief Overload of get_image to allow users to pass
   /// in an image pointer to fill in
   void get_image(char * destination);
+
+  /// @brief Overload of get_image that fills a vector with exactly the bytes the frame used,
+  /// e.g. a variable-size raw_mjpeg frame into a CompressedImage message
+  void get_image(std::vector<uint8_t> & destination);
 
   std::vector<capture_format_t> get_supported_formats();
 
@@ -244,6 +258,11 @@ public:
   inline size_t get_image_size_in_bytes()
   {
     return m_image.size_in_bytes;
+  }
+
+  inline size_t get_image_bytes_used()
+  {
+    return m_image.bytes_used;
   }
 
   inline size_t get_image_size_in_pixels()
@@ -453,6 +472,8 @@ private:
   int m_framerate;
   const time_t m_epoch_time_shift_us;
   std::vector<capture_format_t> m_supported_formats;
+  /// Holds a frame for get_image(std::vector<uint8_t> &), sized for the largest frame
+  std::vector<char> m_frame_buffer;
 };
 
 }  // namespace usb_cam

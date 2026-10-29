@@ -81,9 +81,15 @@ void UsbCam::process_image(const char * src, char * & dest, const int & bytes_us
   // TODO(flynneva): could we skip the copy here somehow?
   // If no conversion required, just copy the image from V4L2 buffer
   if (m_image.pixel_format->requires_conversion() == false) {
-    memcpy(dest, src, m_image.size_in_bytes);
+    // A compressed frame only fills part of the buffer, so copy just the bytes the driver
+    // reports rather than the whole buffer
+    m_image.bytes_used = m_image.is_compressed() ?
+      std::min(static_cast<size_t>(bytes_used), m_image.size_in_bytes) :
+      m_image.size_in_bytes;
+    memcpy(dest, src, m_image.bytes_used);
   } else {
     m_image.pixel_format->convert(src, dest, bytes_used);
+    m_image.bytes_used = m_image.size_in_bytes;
   }
 }
 
@@ -440,6 +446,13 @@ void UsbCam::init_device()
     throw strerror(errno);
   }
 
+  // A compressed frame can be as large as the driver's worst case, which may exceed the
+  // uncompressed size computed from the pixel format
+  if (m_image.is_compressed()) {
+    m_image.size_in_bytes = std::max(
+      m_image.size_in_bytes, static_cast<size_t>(m_image.v4l2_fmt.fmt.pix.sizeimage));
+  }
+
   struct v4l2_streamparm stream_params;
   memset(&stream_params, 0, sizeof(stream_params));
   stream_params.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -563,6 +576,19 @@ void UsbCam::get_image(char * destination)
   m_image.data = destination;
   // grab the image
   grab_image();
+}
+
+/// @brief Overload get_image so users can pass in a vector that is resized to the frame
+/// @param destination destination to fill in with exactly the bytes of the image
+void UsbCam::get_image(std::vector<uint8_t> & destination)
+{
+  // Capture into a buffer big enough for the largest frame, then copy only the bytes the
+  // frame used, so destination never carries padding
+  if (m_frame_buffer.size() < m_image.size_in_bytes) {
+    m_frame_buffer.resize(m_image.size_in_bytes);
+  }
+  get_image(m_frame_buffer.data());
+  destination.assign(m_frame_buffer.begin(), m_frame_buffer.begin() + m_image.bytes_used);
 }
 
 std::vector<capture_format_t> UsbCam::get_supported_formats()

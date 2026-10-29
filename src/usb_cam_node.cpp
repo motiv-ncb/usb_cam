@@ -415,13 +415,8 @@ bool UsbCamNode::take_and_send_image()
 
 bool UsbCamNode::take_and_send_image_mjpeg()
 {
-  // Only resize if required
-  if (sizeof(m_compressed_img_msg->data) != m_camera->get_image_size_in_bytes()) {
-    m_compressed_img_msg->data.resize(m_camera->get_image_size_in_bytes());
-  }
-
-  // grab the image, pass image msg buffer to fill
-  m_camera->get_image(reinterpret_cast<char *>(&m_compressed_img_msg->data[0]));
+  // grab the image, sized to the bytes this frame used
+  m_camera->get_image(m_compressed_img_msg->data);
 
   auto stamp = m_camera->get_image_timestamp();
   m_compressed_img_msg->header.stamp.sec = stamp.tv_sec;
