@@ -777,8 +777,16 @@ int UsbCam::set_v4l_control(uint32_t id, int32_t value)
   struct v4l2_control control;
   CLEAR(control);
   control.id = id;
-  control.value = value;
 
+  // Writing a control can take the camera ~100 ms (e.g. auto exposure on the See3CAM_CU135)
+  // and frames are not read meanwhile, so skip controls that already have the value
+  if (0 == usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_G_CTRL), &control) &&
+    control.value == value)
+  {
+    return 0;
+  }
+
+  control.value = value;
   if (-1 == usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_S_CTRL), &control)) {
     return errno;
   }
