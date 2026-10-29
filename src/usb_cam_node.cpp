@@ -233,9 +233,10 @@ void UsbCamNode::init()
     m_parameters.framerate = frame_rate;
   }
 
-  // TODO(lucasw) should this check a little faster than expected frame rate?
+  // update() waits for the next frame, so poll at twice the camera's frame rate: it then waits
+  // on the camera rather than on the timer, and catches up at once if frames queued up
   // TODO(lucasw) how to do small than ms, or fractional ms- std::chrono::nanoseconds?
-  const int period_ms = 1000.0 / frame_rate;
+  const int period_ms = 1000.0 / (2 * frame_rate);
   m_timer = this->create_wall_timer(
     std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
     std::bind(&UsbCamNode::update, this));
