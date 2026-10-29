@@ -5,6 +5,36 @@ This package is based off of V4L devices specifically instead of just UVC.
 
 For ros1 documentation, see [the ROS wiki](http://ros.org/wiki/usb_cam).
 
+## ros2-vitom changes
+
+This fork's `ros2-vitom` branch is upstream `main` (`772b25f`, 0.8.1 + fixes) plus the commits
+below, which motivROS relies on to record the See3CAM_CU135 as `raw_mjpeg`. When moving to a newer
+upstream, rebase these commits and check whether upstream fixed the same thing.
+
+- `raw_mjpeg` is published as `sensor_msgs/CompressedImage` (`format: jpeg`) on
+  `image_raw/compressed`, with `camera_info`. Upstream checks for a format named `mjpeg`, so it
+  publishes MJPEG as an `Image` and aborts with `Unknown encoding`. image_transport is only used
+  for the other formats, so `image_raw/compressed` has a single publisher.
+- Each `raw_mjpeg` message holds exactly the frame (~0.3 MB at 1920x1440) instead of the whole
+  5.5 MB buffer.
+- Each camera frame is published exactly once, right after it is read. Upstream publishes from a
+  separate timer and can publish the same frame twice. Frames the camera sent but were lost are
+  logged (from V4L2 sequence numbers), and `raw_mjpeg` frames without a JPEG start marker are
+  dropped.
+- The camera runs at the supported rate closest to `framerate` instead of the first rate it lists.
+  If it still runs faster, frames are skipped to publish `framerate`.
+- V4L2 controls are set by ID (`VIDIOC_S_CTRL`) instead of through `v4l2-ctl` names, which
+  current kernels renamed. The old names made `autoexposure`, `exposure`, `auto_white_balance`,
+  `white_balance`, `autofocus` and `focus` silently do nothing.
+
+New parameters (`-1` leaves the setting alone):
+
+| Parameter | Values | |
+|---|---|---|
+| `power_line_frequency` | 0 off, 1 50 Hz, 2 60 Hz | V4L2 anti-flicker filter |
+| `see3cam_exposure_compensation` | 8000 - 1000000 | See3CAM_CU135 only, through its HID interface (`/dev/hidrawN`, needs read/write access) |
+| `see3cam_q_factor` | 10 - 96 | See3CAM_CU135 only, JPEG quality of MJPEG frames |
+
 ## Supported ROS 2 Distros and Platforms
 
 All Officially supported Linux Distros and corresponding ROS 2 releases are supported. Please create an issue if you experience any problems on these platforms.
