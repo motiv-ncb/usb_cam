@@ -59,7 +59,7 @@ using utils::io_method_t;
 
 UsbCam::UsbCam()
 : m_device_name(), m_io(io_method_t::IO_METHOD_MMAP), m_fd(-1),
-  m_number_of_buffers(4), m_buffers(new usb_cam::utils::buffer[m_number_of_buffers]), m_image(),
+  m_number_of_buffers(4), m_buffers(new usb_cam::utils::buffer[m_number_of_buffers]()), m_image(),
   m_is_capturing(false), m_framerate(0),
   m_epoch_time_shift_us(usb_cam::utils::get_epoch_time_shift_us()), m_supported_formats()
 {}
@@ -281,6 +281,21 @@ void UsbCam::start_capturing()
 
 void UsbCam::uninit_device()
 {
+  // Unmap the buffers too: a mapping keeps the device in use after close(), so a camera that
+  // was unplugged would come back under another device node (e.g. /dev/video2, not video0)
+  if (m_buffers) {
+    for (unsigned int i = 0; i < m_number_of_buffers; ++i) {
+      void * start = m_buffers[i].start;
+      if (start == nullptr) {
+        continue;
+      }
+      if (m_io == io_method_t::IO_METHOD_MMAP && start != MAP_FAILED) {
+        munmap(start, m_buffers[i].length);
+      } else if (m_io == io_method_t::IO_METHOD_USERPTR) {
+        free(start);
+      }
+    }
+  }
   m_buffers.reset();
 }
 
@@ -562,9 +577,19 @@ void UsbCam::start()
 
 void UsbCam::shutdown()
 {
-  stop_capturing();
+  // Release everything even when the device is already gone (e.g. unplugged) and stopping the
+  // stream fails; this also runs in the destructor, which must not throw
+  try {
+    stop_capturing();
+  } catch (...) {
+    m_is_capturing = false;
+  }
   uninit_device();
-  close_device();
+  try {
+    close_device();
+  } catch (...) {
+    m_fd = -1;
+  }
 }
 
 /// @brief Grab new image from V4L2 device, return pointer to image
