@@ -62,7 +62,8 @@ public:
   /// @brief Why the camera was not found or the last command failed
   const std::string & last_error() const {return m_last_error;}
 
-  /// @brief Exposure compensation of the camera's auto exposure, 8000 - 1000000
+  /// @brief Exposure compensation, 8000 - 1000000. Acts as the longest exposure in µs that auto
+  /// exposure may use; above one frame period the camera lowers its frame rate in low light
   bool set_exposure_compensation(uint32_t value);
   bool get_exposure_compensation(uint32_t & value);
 

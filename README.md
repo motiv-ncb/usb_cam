@@ -33,7 +33,7 @@ New parameters (`-1` leaves the setting alone):
 | Parameter | Values | |
 |---|---|---|
 | `power_line_frequency` | 0 off, 1 50 Hz, 2 60 Hz | V4L2 anti-flicker filter |
-| `see3cam_exposure_compensation` | 8000 - 1000000 | See3CAM_CU135 only, through its HID interface (`/dev/hidrawN`, needs read/write access) |
+| `see3cam_exposure_compensation` | 8000 - 1000000 | See3CAM_CU135 only, through its HID interface (`/dev/hidrawN`, needs read/write access). Acts as the longest exposure in µs that auto exposure may use: above one frame period (16666 at 60 fps) the camera lowers its frame rate in low light (the default 66666 gave ~20 fps indoors) |
 | `see3cam_q_factor` | 10 - 96 | See3CAM_CU135 only, JPEG quality of MJPEG frames |
 
 ## Supported ROS 2 Distros and Platforms
