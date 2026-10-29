@@ -36,6 +36,7 @@ endif()
 ## Do not use ament_auto here so as to not link to rclcpp
 add_library(${PROJECT_NAME} SHARED
   src/usb_cam.cpp
+  src/see3cam.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
