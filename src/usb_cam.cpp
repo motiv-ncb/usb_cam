@@ -772,4 +772,37 @@ bool UsbCam::set_v4l_parameter(const std::string & param, const std::string & va
   return retcode;
 }
 
+int UsbCam::set_v4l_control(uint32_t id, int32_t value)
+{
+  struct v4l2_control control;
+  CLEAR(control);
+  control.id = id;
+  control.value = value;
+
+  if (-1 == usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_S_CTRL), &control)) {
+    return errno;
+  }
+  return 0;
+}
+
+bool UsbCam::has_v4l_control(uint32_t id)
+{
+  struct v4l2_queryctrl queryctrl;
+  CLEAR(queryctrl);
+  queryctrl.id = id;
+
+  return usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_QUERYCTRL), &queryctrl) == 0 &&
+         !(queryctrl.flags & V4L2_CTRL_FLAG_DISABLED);
+}
+
+bool UsbCam::has_v4l_menu_item(uint32_t id, uint32_t index)
+{
+  struct v4l2_querymenu querymenu;
+  CLEAR(querymenu);
+  querymenu.id = id;
+  querymenu.index = index;
+
+  return usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_QUERYMENU), &querymenu) == 0;
+}
+
 }  // namespace usb_cam

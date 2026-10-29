@@ -65,6 +65,7 @@ public:
   void get_params();
   void assign_params(const std::vector<rclcpp::Parameter> & parameters);
   void set_v4l2_params();
+  void set_v4l2_control(const std::string & name, uint32_t id, int value);
   void update();
   void publish();
   bool take_and_send_image();

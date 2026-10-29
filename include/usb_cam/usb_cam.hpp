@@ -243,6 +243,17 @@ public:
   bool set_v4l_parameter(const std::string & param, int value);
   bool set_v4l_parameter(const std::string & param, const std::string & value);
 
+  /// @brief Set a V4L2 control by its ID (e.g. V4L2_CID_BRIGHTNESS). Unlike set_v4l_parameter
+  /// this does not depend on v4l2-ctl control names, which change between kernels
+  /// @return 0 on success, otherwise the errno of the failed ioctl
+  int set_v4l_control(uint32_t id, int32_t value);
+
+  /// @brief Check if the device has a V4L2 control that is not disabled
+  bool has_v4l_control(uint32_t id);
+
+  /// @brief Check if a V4L2 menu control (e.g. V4L2_CID_EXPOSURE_AUTO) offers a menu item
+  bool has_v4l_menu_item(uint32_t id, uint32_t index);
+
   void stop_capturing();
   void start_capturing();
 
