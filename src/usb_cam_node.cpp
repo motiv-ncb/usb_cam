@@ -225,6 +225,7 @@ void UsbCamNode::init()
   m_camera->start();
 
   auto frame_rate = m_camera->get_frame_rate();
+  RCLCPP_INFO_STREAM(this->get_logger(), "Camera runs at " << frame_rate << " fps");
   if (static_cast<size_t>(m_parameters.framerate) > frame_rate) {
     RCLCPP_WARN_STREAM(
       this->get_logger(),

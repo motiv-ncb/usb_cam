@@ -476,6 +476,11 @@ void UsbCam::init_device()
   if (usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_S_PARM), &stream_params) < 0) {
     throw std::invalid_argument("Couldn't set camera framerate");
   }
+  // The driver answers with the frame interval it actually applied
+  const auto & interval = stream_params.parm.capture.timeperframe;
+  if (interval.numerator > 0 && interval.denominator > 0) {
+    m_framerate = interval.denominator / interval.numerator;
+  }
 
   switch (m_io) {
     case io_method_t::IO_METHOD_READ:

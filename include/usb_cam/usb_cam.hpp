@@ -31,6 +31,7 @@
 #define USB_CAM__USB_CAM_HPP_
 
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <algorithm>
 #include <sstream>
@@ -442,12 +443,26 @@ public:
       );
     }
 
+    // Use the supported rate closest to the requested one (the faster one on a tie), so the
+    // camera itself runs at `framerate` instead of at whichever rate it happens to list first
+    size_t frame_rate = 0;
+    const auto distance = [&parameters](size_t rate) {
+        return std::abs(static_cast<double>(rate) - parameters.framerate);
+      };
     for (auto fmt : this->supported_formats()) {
       if (fmt.v4l2_fmt.width == static_cast<size_t>(parameters.image_width) &&
         fmt.v4l2_fmt.height == static_cast<size_t>(parameters.image_height) &&
         fmt.v4l2_fmt.pixel_format == found_driver_format->v4l2()) {
-        return fmt.v4l2_fmt.discrete.denominator / fmt.v4l2_fmt.discrete.numerator;
+        const size_t rate = fmt.v4l2_fmt.discrete.denominator / fmt.v4l2_fmt.discrete.numerator;
+        if (frame_rate == 0 || distance(rate) < distance(frame_rate) ||
+          (distance(rate) == distance(frame_rate) && rate > frame_rate))
+        {
+          frame_rate = rate;
+        }
       }
+    }
+    if (frame_rate > 0) {
+      return frame_rate;
     }
 
     throw std::invalid_argument(
