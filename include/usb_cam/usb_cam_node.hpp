@@ -63,6 +63,10 @@ public:
   ~UsbCamNode();
 
   void init();
+  void open_camera();
+  void close_camera();
+  void reopen_camera();
+  void lose_camera(const std::string & reason);
   void get_params();
   void assign_params(const std::vector<rclcpp::Parameter> & parameters);
   void set_v4l2_params();
@@ -109,6 +113,13 @@ public:
   size_t m_rate_window_frames = 0;
   double m_last_stamp = 0.0;
   bool m_frame_rate_low = false;
+
+  // The camera failed (e.g. stalled or was unplugged) and is opened again every second, through
+  // the udev link of the device it was first opened at
+  bool m_camera_lost = false;
+  std::string m_device_link;
+  std::chrono::steady_clock::time_point m_camera_lost_since;
+  std::chrono::steady_clock::time_point m_next_reopen;
 
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr m_service_capture;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr m_parameters_callback_handle;

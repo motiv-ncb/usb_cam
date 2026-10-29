@@ -116,6 +116,10 @@ void UsbCamNode::service_capture(
   std::shared_ptr<std_srvs::srv::SetBool::Response> response)
 {
   (void) request_header;
+  if (!m_camera) {
+    response->message = "Camera unavailable, opening it again";
+    return;
+  }
   if (request->data) {
     m_camera->start_capturing();
     set_see3cam_params();
@@ -140,6 +144,42 @@ std::string resolve_device_path(const std::string & path)
     return target_path.string();
   }
   return path;
+}
+
+/// @brief Find the udev link of a device node (/dev/v4l/by-id/..., else /dev/v4l/by-path/...),
+/// which keeps naming the same camera when it gets another device node after being plugged in
+/// again
+std::string find_device_link(const std::string & device)
+{
+  std::error_code error;
+  const auto target = std::filesystem::canonical(device, error);
+  if (error) {
+    return "";
+  }
+  for (const char * directory : {"/dev/v4l/by-id", "/dev/v4l/by-path"}) {
+    for (const auto & entry : std::filesystem::directory_iterator(directory, error)) {
+      if (std::filesystem::canonical(entry.path(), error) == target) {
+        return entry.path().string();
+      }
+    }
+  }
+  return "";
+}
+
+/// @brief Describe the exception being handled; the camera code throws several types
+std::string current_exception_text()
+{
+  try {
+    throw;
+  } catch (const std::exception & e) {
+    return e.what();
+  } catch (const char * e) {
+    return e;
+  } catch (int e) {
+    return strerror(e);
+  } catch (...) {
+    return "unknown error";
+  }
 }
 
 void UsbCamNode::init()
@@ -197,14 +237,6 @@ void UsbCamNode::init()
     RCLCPP_WARN(this->get_logger(), "Skipping V4L2 device availability check by request.");
   }
 
-  // Some See3CAM_CU135 settings are not V4L2 controls but go through its HID interface
-  m_see3cam = std::make_unique<See3CamCU135>(m_parameters.device_name);
-  if (m_see3cam->is_available()) {
-    RCLCPP_INFO(
-      this->get_logger(), "See3CAM_CU135 controls available through %s",
-      m_see3cam->hidraw_path().c_str());
-  }
-
   // A raw_mjpeg frame is already a JPEG, so publish it as it is on image_raw/compressed. Only
   // other formats go through image_transport, whose compressed plugin would otherwise be a
   // second publisher on image_raw/compressed
@@ -231,10 +263,10 @@ void UsbCamNode::init()
     m_parameters.camera_name.c_str(), m_parameters.device_name.c_str(),
     m_parameters.image_width, m_parameters.image_height, m_parameters.io_method_name.c_str(),
     m_parameters.pixel_format_name.c_str(), m_parameters.framerate);
-  // set the IO method
-  io_method_t io_method =
-    usb_cam::utils::io_method_from_string(m_parameters.io_method_name);
-  if (io_method == usb_cam::utils::IO_METHOD_UNKNOWN) {
+  // check the IO method
+  if (usb_cam::utils::io_method_from_string(m_parameters.io_method_name) ==
+    usb_cam::utils::IO_METHOD_UNKNOWN)
+  {
     RCLCPP_ERROR_ONCE(
       this->get_logger(),
       "Unknown IO method '%s'", m_parameters.io_method_name.c_str());
@@ -242,19 +274,9 @@ void UsbCamNode::init()
     return;
   }
 
-  // configure the camera
-  m_camera->configure(m_parameters, io_method);
-
-  set_v4l2_params();
-
-  // start the camera
-  m_camera->start();
-  // the See3CAM_CU135 resets its exposure compensation when the first stream after a format
-  // change starts, so set the see3cam_* parameters after starting the stream
-  set_see3cam_params();
+  open_camera();
 
   auto frame_rate = m_camera->get_frame_rate();
-  RCLCPP_INFO_STREAM(this->get_logger(), "Camera runs at " << frame_rate << " fps");
   if (static_cast<size_t>(m_parameters.framerate) > frame_rate) {
     RCLCPP_WARN_STREAM(
       this->get_logger(),
@@ -276,6 +298,89 @@ void UsbCamNode::init()
       this->get_logger(),
       "Publishing " << m_parameters.framerate << " of the camera's " << frame_rate << " fps");
   }
+}
+
+/// @brief Open, configure and start the camera and apply all settings to it
+void UsbCamNode::open_camera()
+{
+  // A camera that was plugged in again can get another device node (e.g. /dev/video2 instead of
+  // video0), so once it was opened, follow it by its udev link, and resolve that every time
+  const std::string device =
+    m_device_link.empty() ? this->get_parameter("video_device").as_string() : m_device_link;
+  m_parameters.device_name = resolve_device_path(device);
+  if (!m_camera) {
+    m_camera = new usb_cam::UsbCam();
+  }
+
+  // Some See3CAM_CU135 settings are not V4L2 controls but go through its HID interface
+  m_see3cam = std::make_unique<See3CamCU135>(m_parameters.device_name);
+  if (m_see3cam->is_available()) {
+    RCLCPP_INFO(
+      this->get_logger(), "See3CAM_CU135 controls available through %s",
+      m_see3cam->hidraw_path().c_str());
+  }
+
+  // configure the camera
+  m_camera->configure(
+    m_parameters, usb_cam::utils::io_method_from_string(m_parameters.io_method_name));
+
+  set_v4l2_params();
+
+  // start the camera
+  m_camera->start();
+  // the See3CAM_CU135 resets its exposure compensation when the first stream after a format
+  // change starts, so set the see3cam_* parameters after starting the stream
+  set_see3cam_params();
+
+  if (m_device_link.empty()) {
+    m_device_link = find_device_link(m_parameters.device_name);
+  }
+  RCLCPP_INFO_STREAM(
+    this->get_logger(),
+    "Camera " << m_parameters.device_name << " runs at " << m_camera->get_frame_rate() << " fps");
+}
+
+/// @brief Stop and release the camera, also when it is gone (e.g. unplugged)
+void UsbCamNode::close_camera()
+{
+  m_see3cam.reset();
+  delete m_camera;
+  m_camera = nullptr;
+}
+
+/// @brief Try to open a lost camera again, at most once per second
+void UsbCamNode::reopen_camera()
+{
+  const auto now = std::chrono::steady_clock::now();
+  if (now < m_next_reopen) {
+    return;
+  }
+  m_next_reopen = now + std::chrono::seconds(1);
+
+  try {
+    open_camera();
+  } catch (...) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 10000,
+      "Camera still unavailable (%s), trying again every second", current_exception_text().c_str());
+    close_camera();
+    return;
+  }
+  m_camera_lost = false;
+  RCLCPP_INFO(
+    this->get_logger(), "Camera is back after %.1f s",
+    std::chrono::duration<double>(now - m_camera_lost_since).count());
+}
+
+/// @brief Release a camera that failed and open it again from update()
+void UsbCamNode::lose_camera(const std::string & reason)
+{
+  RCLCPP_ERROR(
+    this->get_logger(), "Camera failed (%s), releasing it and opening it again", reason.c_str());
+  close_camera();
+  m_camera_lost = true;
+  m_camera_lost_since = std::chrono::steady_clock::now();
+  m_next_reopen = m_camera_lost_since + std::chrono::seconds(1);
 }
 
 void UsbCamNode::get_params()
@@ -359,6 +464,10 @@ void UsbCamNode::assign_params(const std::vector<rclcpp::Parameter> & parameters
 /// TODO(flynneva): should this actuaully be part of UsbCam class?
 void UsbCamNode::set_v4l2_params()
 {
+  if (!m_camera) {
+    return;  // lost camera, the settings are applied when it is opened again
+  }
+
   // Controls are set by their V4L2 ID: v4l2-ctl names change between kernels (e.g.
   // `exposure_auto` is now `auto_exposure`) and a name the kernel no longer knows is ignored.
   // The names logged below are the current v4l2-ctl ones
@@ -438,6 +547,9 @@ void UsbCamNode::set_see3cam_params()
 {
   if (m_parameters.see3cam_exposure_compensation < 0 && m_parameters.see3cam_q_factor < 0) {
     return;
+  }
+  if (!m_camera) {
+    return;  // lost camera, the settings are applied when it is opened again
   }
   if (!m_see3cam || !m_see3cam->is_available()) {
     RCLCPP_WARN_ONCE(
@@ -552,13 +664,25 @@ rcl_interfaces::msg::SetParametersResult UsbCamNode::parameters_callback(
 
 void UsbCamNode::update()
 {
+  if (m_camera_lost) {
+    reopen_camera();
+    return;
+  }
   if (m_camera->is_capturing()) {
     // If the camera exposure longer higher than the framerate period
     // then that caps the framerate.
     // auto t0 = now();
-    bool isSuccessful = (m_parameters.pixel_format_name == "raw_mjpeg") ?
-      take_and_send_image_mjpeg() :
-      take_and_send_image();
+    bool isSuccessful = false;
+    try {
+      isSuccessful = (m_parameters.pixel_format_name == "raw_mjpeg") ?
+        take_and_send_image_mjpeg() :
+        take_and_send_image();
+    } catch (...) {
+      // e.g. no frame for 5 s or the camera was unplugged: keep the node running and open the
+      // camera again rather than ending the node, and with it the camera stream for good
+      lose_camera(current_exception_text());
+      return;
+    }
     // Publish each new frame exactly once, so nothing downstream sees a frame twice
     if (!isSuccessful) {
       return;
