@@ -93,7 +93,8 @@ void UsbCam::process_image(const char * src, char * & dest, const int & bytes_us
   }
 }
 
-void UsbCam::read_frame()
+/// @return true if a new frame was read
+bool UsbCam::read_frame()
 {
   struct v4l2_buffer buf;
   unsigned int i;
@@ -105,12 +106,13 @@ void UsbCam::read_frame()
       if (len == -1) {
         switch (errno) {
           case EAGAIN:
-            return;
+            return false;
           default:
             throw std::runtime_error("Unable to read frame");
         }
       }
-      return process_image(m_buffers[0].start, m_image.data, len);
+      process_image(m_buffers[0].start, m_image.data, len);
+      return true;
     case io_method_t::IO_METHOD_MMAP:
       CLEAR(buf);
       buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -121,7 +123,7 @@ void UsbCam::read_frame()
       if (-1 == usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_G_FMT), &m_image.v4l2_fmt)) {
         switch (errno) {
           case EAGAIN:
-            return;
+            return false;
           default:
             throw std::runtime_error("Invalid v4l2 format");
         }
@@ -130,7 +132,7 @@ void UsbCam::read_frame()
       if (-1 == usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_DQBUF), &buf)) {
         switch (errno) {
           case EAGAIN:
-            return;
+            return false;
           default:
             throw std::runtime_error("Unable to retrieve frame with mmap");
         }
@@ -146,7 +148,7 @@ void UsbCam::read_frame()
       if (-1 == usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_QBUF), &buf)) {
         throw std::runtime_error("Unable to exchange buffer with the driver");
       }
-      return;
+      return true;
     case io_method_t::IO_METHOD_USERPTR:
       CLEAR(buf);
 
@@ -156,7 +158,7 @@ void UsbCam::read_frame()
       if (-1 == usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_DQBUF), &buf)) {
         switch (errno) {
           case EAGAIN:
-            return;
+            return false;
           default:
             throw std::runtime_error("Unable to exchange buffer with driver");
         }
@@ -169,7 +171,7 @@ void UsbCam::read_frame()
         if (buf.m.userptr == reinterpret_cast<uint64_t>(m_buffers[i].start) && \
           buf.length == m_buffers[i].length)
         {
-          return;
+          return false;
         }
       }
 
@@ -178,10 +180,11 @@ void UsbCam::read_frame()
       if (-1 == usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_QBUF), &buf)) {
         throw std::runtime_error("Unable to exchange buffer with driver");
       }
-      return;
+      return true;
     case io_method_t::IO_METHOD_UNKNOWN:
       throw std::invalid_argument("IO method unknown");
   }
+  return false;
 }
 
 void UsbCam::stop_capturing()
@@ -567,28 +570,33 @@ char * UsbCam::get_image()
 
 /// @brief Overload get_image so users can pass in an image pointer to fill
 /// @param destination destination to fill in with image
-void UsbCam::get_image(char * destination)
+/// @return true if a new frame was captured into destination
+bool UsbCam::get_image(char * destination)
 {
   if ((m_image.width == 0) || (m_image.height == 0)) {
-    return;
+    return false;
   }
   // Set the destination pointer to be filled
   m_image.data = destination;
   // grab the image
-  grab_image();
+  return grab_image();
 }
 
 /// @brief Overload get_image so users can pass in a vector that is resized to the frame
 /// @param destination destination to fill in with exactly the bytes of the image
-void UsbCam::get_image(std::vector<uint8_t> & destination)
+/// @return true if a new frame was captured into destination
+bool UsbCam::get_image(std::vector<uint8_t> & destination)
 {
   // Capture into a buffer big enough for the largest frame, then copy only the bytes the
   // frame used, so destination never carries padding
   if (m_frame_buffer.size() < m_image.size_in_bytes) {
     m_frame_buffer.resize(m_image.size_in_bytes);
   }
-  get_image(m_frame_buffer.data());
+  if (!get_image(m_frame_buffer.data())) {
+    return false;
+  }
   destination.assign(m_frame_buffer.begin(), m_frame_buffer.begin() + m_image.bytes_used);
+  return true;
 }
 
 std::vector<capture_format_t> UsbCam::get_supported_formats()
@@ -639,7 +647,8 @@ std::vector<capture_format_t> UsbCam::get_supported_formats()
   return m_supported_formats;
 }
 
-void UsbCam::grab_image()
+/// @return true if a new frame was read
+bool UsbCam::grab_image()
 {
   fd_set fds;
   struct timeval tv;
@@ -657,7 +666,7 @@ void UsbCam::grab_image()
   if (-1 == r) {
     if (EINTR == errno) {
       // interruped (e.g. maybe Ctrl + c) so don't throw anything
-      return;
+      return false;
     }
 
     std::cerr << "Something went wrong, exiting..." << errno << std::endl;
@@ -669,7 +678,7 @@ void UsbCam::grab_image()
     throw "select timeout";
   }
 
-  read_frame();
+  return read_frame();
 }
 
 // enables/disables auto focus

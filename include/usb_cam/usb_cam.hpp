@@ -222,11 +222,13 @@ public:
 
   /// @brief Overload of get_image to allow users to pass
   /// in an image pointer to fill in
-  void get_image(char * destination);
+  /// @return true if a new frame was captured
+  bool get_image(char * destination);
 
   /// @brief Overload of get_image that fills a vector with exactly the bytes the frame used,
   /// e.g. a variable-size raw_mjpeg frame into a CompressedImage message
-  void get_image(std::vector<uint8_t> & destination);
+  /// @return true if a new frame was captured
+  bool get_image(std::vector<uint8_t> & destination);
 
   std::vector<capture_format_t> get_supported_formats();
 
@@ -454,8 +456,8 @@ private:
   void init_device();
 
   void open_device();
-  void grab_image();
-  void read_frame();
+  bool grab_image();
+  bool read_frame();
   void process_image(const char * src, char * & dest, const int & bytes_used);
 
   void uninit_device();

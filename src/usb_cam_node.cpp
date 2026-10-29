@@ -99,7 +99,6 @@ UsbCamNode::~UsbCamNode()
   m_camera_info_msg.reset();
   m_camera_info.reset();
   m_timer.reset();
-  m_publish_timer.reset();
   m_service_capture.reset();
   m_parameters_callback_handle.reset();
 
@@ -241,10 +240,6 @@ void UsbCamNode::init()
     std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
     std::bind(&UsbCamNode::update, this));
   RCLCPP_INFO_STREAM(this->get_logger(), "Timer triggering every " << period_ms << " ms");
-  const int publish_period_ms = 1000.0 / m_parameters.framerate;
-  m_publish_timer = this->create_wall_timer(
-    std::chrono::milliseconds(static_cast<int64_t>(publish_period_ms)),
-    std::bind(&UsbCamNode::publish, this));
 }
 
 void UsbCamNode::get_params()
@@ -402,7 +397,9 @@ bool UsbCamNode::take_and_send_image()
   }
 
   // grab the image, pass image msg buffer to fill
-  m_camera->get_image(reinterpret_cast<char *>(&m_image_msg->data[0]));
+  if (!m_camera->get_image(reinterpret_cast<char *>(&m_image_msg->data[0]))) {
+    return false;
+  }
 
   auto stamp = m_camera->get_image_timestamp();
   m_image_msg->header.stamp.sec = stamp.tv_sec;
@@ -416,7 +413,9 @@ bool UsbCamNode::take_and_send_image()
 bool UsbCamNode::take_and_send_image_mjpeg()
 {
   // grab the image, sized to the bytes this frame used
-  m_camera->get_image(m_compressed_img_msg->data);
+  if (!m_camera->get_image(m_compressed_img_msg->data)) {
+    return false;
+  }
 
   auto stamp = m_camera->get_image_timestamp();
   m_compressed_img_msg->header.stamp.sec = stamp.tv_sec;
@@ -450,9 +449,12 @@ void UsbCamNode::update()
     bool isSuccessful = (m_parameters.pixel_format_name == "raw_mjpeg") ?
       take_and_send_image_mjpeg() :
       take_and_send_image();
+    // Publish each new frame exactly once, so nothing downstream sees a frame twice
     if (!isSuccessful) {
-      RCLCPP_WARN_ONCE(this->get_logger(), "USB camera did not respond in time.");
+      return;
     }
+
+    publish();
   }
 }
 
