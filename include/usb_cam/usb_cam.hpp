@@ -118,6 +118,7 @@ typedef struct parameters_t
   int white_balance;
   int exposure;
   int focus;
+  int power_line_frequency;
   bool auto_white_balance;
   bool autoexposure;
   bool autofocus;
@@ -144,6 +145,7 @@ typedef struct parameters_t
     white_balance(-1),
     exposure(-1),
     focus(-1),
+    power_line_frequency(-1),
     auto_white_balance(true),
     autoexposure(true),
     autofocus(false),

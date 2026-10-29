@@ -81,6 +81,8 @@ UsbCamNode::UsbCamNode(const rclcpp::NodeOptions & node_options)
   this->declare_parameter("exposure", 100);
   this->declare_parameter("autofocus", false);
   this->declare_parameter("focus", -1);  // 0-255, -1 "leave alone"
+  // 0 disabled, 1 50 Hz, 2 60 Hz anti-flicker, -1 "leave alone"
+  this->declare_parameter("power_line_frequency", -1);
   this->declare_parameter("skip_device_check", false);  // allow bypassing V4L2 device list check
 
   get_params();
@@ -257,7 +259,7 @@ void UsbCamNode::get_params()
       "camera_name", "camera_info_url", "frame_id", "framerate", "image_height", "image_width",
       "io_method", "pixel_format", "av_device_format", "video_device", "brightness", "contrast",
       "saturation", "sharpness", "gain", "auto_white_balance", "white_balance", "autoexposure",
-      "exposure", "autofocus", "focus", "skip_device_check"
+      "exposure", "autofocus", "focus", "power_line_frequency", "skip_device_check"
     }
   );
 
@@ -311,6 +313,8 @@ void UsbCamNode::assign_params(const std::vector<rclcpp::Parameter> & parameters
       m_parameters.autofocus = parameter.as_bool();
     } else if (parameter.get_name() == "focus") {
       m_parameters.focus = parameter.as_int();
+    } else if (parameter.get_name() == "power_line_frequency") {
+      m_parameters.power_line_frequency = parameter.as_int();
     } else if (parameter.get_name() == "skip_device_check") {
       m_parameters.skip_device_check = parameter.as_bool();
     } else {
@@ -346,6 +350,11 @@ void UsbCamNode::set_v4l2_params()
 
   if (m_parameters.gain >= 0) {
     set_v4l2_control("gain", V4L2_CID_GAIN, m_parameters.gain);
+  }
+
+  if (m_parameters.power_line_frequency >= 0) {
+    set_v4l2_control(
+      "power_line_frequency", V4L2_CID_POWER_LINE_FREQUENCY, m_parameters.power_line_frequency);
   }
 
   // check auto white balance
