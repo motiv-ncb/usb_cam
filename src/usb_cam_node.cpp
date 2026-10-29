@@ -423,6 +423,16 @@ bool UsbCamNode::take_and_send_image_mjpeg()
     return false;
   }
 
+  // A frame without a JPEG start marker (e.g. one cut short while the stream starts) is of no
+  // use downstream, so drop it rather than publish it
+  const auto & data = m_compressed_img_msg->data;
+  if (data.size() < 2 || data[0] != 0xFF || data[1] != 0xD8) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "Dropping a frame that is not a JPEG (%zu bytes)", data.size());
+    return false;
+  }
+
   auto stamp = m_camera->get_image_timestamp();
   m_compressed_img_msg->header.stamp.sec = stamp.tv_sec;
   m_compressed_img_msg->header.stamp.nanosec = stamp.tv_nsec;
