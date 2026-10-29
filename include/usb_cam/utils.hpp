@@ -195,6 +195,9 @@ inline std::map<std::string, v4l2_capability> available_devices()
         } else {
           v4l2_devices[device_name] = device_capabilities;
         }
+        // An open file keeps the device in use: after an unplug the camera would come back
+        // under another device node (e.g. /dev/video2 instead of video0)
+        close(fd);
       }
     } else {
       // device doesn't exist, continue
