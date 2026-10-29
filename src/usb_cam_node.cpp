@@ -565,12 +565,39 @@ void UsbCamNode::update()
     m_last_sequence = sequence;
     m_frames_read++;
 
+    const auto frame_rate = m_camera->get_frame_rate();
+    const auto stamp = m_camera->get_image_timestamp();
+    const double stamp_s = stamp.tv_sec + stamp.tv_nsec * 1e-9;
+
+    // A camera can send fewer frames than its set rate without losing any, e.g. when auto
+    // exposure takes longer than a frame period in low light. Measure the rate it sends at over
+    // windows of a few seconds; lost frames count as sent, they are reported above
+    const size_t frames_sent = m_frames_read + m_frames_lost;
+    if (m_rate_window_start == 0.0 || stamp_s - m_last_stamp > 1.0) {
+      // first frame, or the stream was paused (e.g. through set_capture)
+      m_rate_window_start = stamp_s;
+      m_rate_window_frames = frames_sent;
+    } else if (stamp_s - m_rate_window_start >= 5.0) {
+      const double rate =
+        (frames_sent - m_rate_window_frames) / (stamp_s - m_rate_window_start);
+      const bool rate_low = rate < 0.9 * frame_rate;
+      if (rate_low) {
+        RCLCPP_WARN_THROTTLE(
+          this->get_logger(), *this->get_clock(), 30000,
+          "Camera sends %.1f of %zu fps, e.g. because the exposure is longer than a frame "
+          "(on a See3CAM_CU135, lower see3cam_exposure_compensation)", rate, frame_rate);
+      } else if (m_frame_rate_low) {
+        RCLCPP_INFO(this->get_logger(), "Camera sends %.1f fps again", rate);
+      }
+      m_frame_rate_low = rate_low;
+      m_rate_window_start = stamp_s;
+      m_rate_window_frames = frames_sent;
+    }
+    m_last_stamp = stamp_s;
+
     // The camera only offers fixed rates and may run faster than `framerate`, so skip frames
     // to publish `framerate` per second on average
-    const auto frame_rate = m_camera->get_frame_rate();
     if (static_cast<size_t>(m_parameters.framerate) < frame_rate) {
-      const auto stamp = m_camera->get_image_timestamp();
-      const double stamp_s = stamp.tv_sec + stamp.tv_nsec * 1e-9;
       if (stamp_s + 0.5 / frame_rate < m_next_publish_time) {
         return;
       }

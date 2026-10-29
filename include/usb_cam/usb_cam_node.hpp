@@ -103,6 +103,12 @@ public:
   size_t m_frames_lost = 0;
   // Earliest frame stamp (seconds) to publish when publishing fewer frames than the camera sends
   double m_next_publish_time = 0.0;
+  // Window (start stamp in seconds, frames sent until then) over which the frame rate the camera
+  // actually sends at is measured, and the stamp of the last frame read
+  double m_rate_window_start = 0.0;
+  size_t m_rate_window_frames = 0;
+  double m_last_stamp = 0.0;
+  bool m_frame_rate_low = false;
 
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr m_service_capture;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr m_parameters_callback_handle;

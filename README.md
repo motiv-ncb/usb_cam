@@ -22,7 +22,8 @@ upstream, rebase these commits and check whether upstream fixed the same thing.
   logged (from V4L2 sequence numbers), and `raw_mjpeg` frames without a JPEG start marker are
   dropped.
 - The camera runs at the supported rate closest to `framerate` instead of the first rate it lists.
-  If it still runs faster, frames are skipped to publish `framerate`.
+  If it still runs faster, frames are skipped to publish `framerate`. If it sends fewer frames
+  than its set rate (e.g. because the exposure is longer than a frame), a warning is logged.
 - V4L2 controls are set by ID (`VIDIOC_S_CTRL`) instead of through `v4l2-ctl` names, which
   current kernels renamed. The old names made `autoexposure`, `exposure`, `auto_white_balance`,
   `white_balance`, `autofocus` and `focus` silently do nothing.
