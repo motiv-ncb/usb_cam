@@ -119,6 +119,9 @@ typedef struct parameters_t
   int exposure;
   int focus;
   int power_line_frequency;
+  // See3CAM_CU135 settings made through its HID interface, -1 to leave alone
+  int see3cam_exposure_compensation;
+  int see3cam_q_factor;
   bool auto_white_balance;
   bool autoexposure;
   bool autofocus;
@@ -146,6 +149,8 @@ typedef struct parameters_t
     exposure(-1),
     focus(-1),
     power_line_frequency(-1),
+    see3cam_exposure_compensation(-1),
+    see3cam_q_factor(-1),
     auto_white_balance(true),
     autoexposure(true),
     autofocus(false),

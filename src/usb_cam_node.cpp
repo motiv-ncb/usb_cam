@@ -83,6 +83,9 @@ UsbCamNode::UsbCamNode(const rclcpp::NodeOptions & node_options)
   this->declare_parameter("focus", -1);  // 0-255, -1 "leave alone"
   // 0 disabled, 1 50 Hz, 2 60 Hz anti-flicker, -1 "leave alone"
   this->declare_parameter("power_line_frequency", -1);
+  // See3CAM_CU135 only, -1 "leave alone"
+  this->declare_parameter("see3cam_exposure_compensation", -1);  // 8000-1000000
+  this->declare_parameter("see3cam_q_factor", -1);  // 10-96, JPEG quality of MJPEG frames
   this->declare_parameter("skip_device_check", false);  // allow bypassing V4L2 device list check
 
   get_params();
@@ -115,6 +118,7 @@ void UsbCamNode::service_capture(
   (void) request_header;
   if (request->data) {
     m_camera->start_capturing();
+    set_see3cam_params();
     response->message = "Start Capturing";
   } else {
     m_camera->stop_capturing();
@@ -181,6 +185,14 @@ void UsbCamNode::init()
     RCLCPP_WARN(this->get_logger(), "Skipping V4L2 device availability check by request.");
   }
 
+  // Some See3CAM_CU135 settings are not V4L2 controls but go through its HID interface
+  m_see3cam = std::make_unique<See3CamCU135>(m_parameters.device_name);
+  if (m_see3cam->is_available()) {
+    RCLCPP_INFO(
+      this->get_logger(), "See3CAM_CU135 controls available through %s",
+      m_see3cam->hidraw_path().c_str());
+  }
+
   // A raw_mjpeg frame is already a JPEG, so publish it as it is on image_raw/compressed. Only
   // other formats go through image_transport, whose compressed plugin would otherwise be a
   // second publisher on image_raw/compressed
@@ -225,6 +237,9 @@ void UsbCamNode::init()
 
   // start the camera
   m_camera->start();
+  // the See3CAM_CU135 resets its exposure compensation when the first stream after a format
+  // change starts, so set the see3cam_* parameters after starting the stream
+  set_see3cam_params();
 
   auto frame_rate = m_camera->get_frame_rate();
   RCLCPP_INFO_STREAM(this->get_logger(), "Camera runs at " << frame_rate << " fps");
@@ -259,7 +274,8 @@ void UsbCamNode::get_params()
       "camera_name", "camera_info_url", "frame_id", "framerate", "image_height", "image_width",
       "io_method", "pixel_format", "av_device_format", "video_device", "brightness", "contrast",
       "saturation", "sharpness", "gain", "auto_white_balance", "white_balance", "autoexposure",
-      "exposure", "autofocus", "focus", "power_line_frequency", "skip_device_check"
+      "exposure", "autofocus", "focus", "power_line_frequency", "see3cam_exposure_compensation",
+      "see3cam_q_factor", "skip_device_check"
     }
   );
 
@@ -315,6 +331,10 @@ void UsbCamNode::assign_params(const std::vector<rclcpp::Parameter> & parameters
       m_parameters.focus = parameter.as_int();
     } else if (parameter.get_name() == "power_line_frequency") {
       m_parameters.power_line_frequency = parameter.as_int();
+    } else if (parameter.get_name() == "see3cam_exposure_compensation") {
+      m_parameters.see3cam_exposure_compensation = parameter.as_int();
+    } else if (parameter.get_name() == "see3cam_q_factor") {
+      m_parameters.see3cam_q_factor = parameter.as_int();
     } else if (parameter.get_name() == "skip_device_check") {
       m_parameters.skip_device_check = parameter.as_bool();
     } else {
@@ -401,6 +421,46 @@ void UsbCamNode::set_v4l2_control(const std::string & name, uint32_t id, int val
   }
 }
 
+/// @brief Send the see3cam_* parameters to a See3CAM_CU135 and log what the camera reports back
+void UsbCamNode::set_see3cam_params()
+{
+  if (m_parameters.see3cam_exposure_compensation < 0 && m_parameters.see3cam_q_factor < 0) {
+    return;
+  }
+  if (!m_see3cam || !m_see3cam->is_available()) {
+    RCLCPP_WARN_ONCE(
+      this->get_logger(), "Ignoring the see3cam_* parameters: %s",
+      m_see3cam ? m_see3cam->last_error().c_str() : "camera not initialized");
+    return;
+  }
+
+  if (m_parameters.see3cam_exposure_compensation >= 0) {
+    uint32_t value = 0;
+    if (m_see3cam->set_exposure_compensation(m_parameters.see3cam_exposure_compensation) &&
+      m_see3cam->get_exposure_compensation(value))
+    {
+      RCLCPP_INFO(this->get_logger(), "See3CAM exposure compensation is %u", value);
+    } else {
+      RCLCPP_WARN(
+        this->get_logger(), "Could not set See3CAM exposure compensation to %d: %s",
+        m_parameters.see3cam_exposure_compensation, m_see3cam->last_error().c_str());
+    }
+  }
+
+  if (m_parameters.see3cam_q_factor >= 0) {
+    uint8_t value = 0;
+    if (m_parameters.see3cam_q_factor <= 255 &&
+      m_see3cam->set_q_factor(m_parameters.see3cam_q_factor) && m_see3cam->get_q_factor(value))
+    {
+      RCLCPP_INFO(this->get_logger(), "See3CAM Q-factor is %u", value);
+    } else {
+      RCLCPP_WARN(
+        this->get_logger(), "Could not set See3CAM Q-factor to %d: %s",
+        m_parameters.see3cam_q_factor, m_see3cam->last_error().c_str());
+    }
+  }
+}
+
 bool UsbCamNode::take_and_send_image()
 {
   // Only resize if required
@@ -465,6 +525,13 @@ rcl_interfaces::msg::SetParametersResult UsbCamNode::parameters_callback(
   m_timer->reset();
   assign_params(parameters);
   set_v4l2_params();
+  // Only talk to the See3CAM when one of its own settings changed
+  for (const auto & parameter : parameters) {
+    if (parameter.get_name().rfind("see3cam_", 0) == 0) {
+      set_see3cam_params();
+      break;
+    }
+  }
   rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;
   result.reason = "success";

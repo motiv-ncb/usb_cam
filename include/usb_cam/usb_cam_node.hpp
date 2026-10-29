@@ -42,6 +42,7 @@
 #include "sensor_msgs/msg/compressed_image.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 
+#include "usb_cam/see3cam.hpp"
 #include "usb_cam/usb_cam.hpp"
 
 
@@ -66,6 +67,7 @@ public:
   void assign_params(const std::vector<rclcpp::Parameter> & parameters);
   void set_v4l2_params();
   void set_v4l2_control(const std::string & name, uint32_t id, int value);
+  void set_see3cam_params();
   void update();
   void publish();
   bool take_and_send_image();
@@ -80,6 +82,7 @@ public:
     std::shared_ptr<std_srvs::srv::SetBool::Response> response);
 
   UsbCam * m_camera;
+  std::unique_ptr<See3CamCU135> m_see3cam;
 
   sensor_msgs::msg::Image::UniquePtr m_image_msg;
   sensor_msgs::msg::CompressedImage::UniquePtr m_compressed_img_msg;
